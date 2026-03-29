@@ -6,7 +6,7 @@ import { AtomNode } from "./AtomNode";
 import { BondLine } from "./BondLine";
 import { ElementPalette } from "../components/ElementPalette"; // <-- Importar a Paleta
 import { useMoleculeStore } from "../store/useMoleculeStore";
-import { gridInstance } from "../utils/grid"; // <-- Importar a instância da grade
+import { gridMath } from "../utils/grid"; // <-- Importar a instância da grade
 
 export const MoleculeCanvas: React.FC = () => {
   const stageRef = useRef<any>(null); // Referência para o palco do Konva
@@ -50,7 +50,7 @@ export const MoleculeCanvas: React.FC = () => {
     if (!pointerPosition) return;
 
     // A MATEMÁTICA DO HONEYCOMB: Converte píxeis de volta para coordenadas hexagonais (q, r)
-    const clickedHex = gridInstance.pointToHex({
+    const clickedHex = gridMath.pointToHex({
       x: pointerPosition.x,
       y: pointerPosition.y,
     });

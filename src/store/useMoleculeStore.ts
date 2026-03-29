@@ -32,7 +32,7 @@ const isOccupied = (atoms: Record<string, Atom>, q: number, r: number) => {
   );
 };
 
-export const useMoleculeStore = create<MoleculeState>((set, get) => ({
+export const useMoleculeStore = create<MoleculeState>((set) => ({
   atoms: {},
   bonds: [],
   selectedAtomId: null,

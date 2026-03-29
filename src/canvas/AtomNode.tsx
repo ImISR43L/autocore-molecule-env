@@ -1,7 +1,7 @@
 // src/canvas/AtomNode.tsx
 import React from "react";
 import { Group, Circle, Text } from "react-konva";
-import { CustomHex, HEX_RADIUS, gridInstance } from "../utils/grid";
+import { CustomHex, HEX_RADIUS, gridMath } from "../utils/grid";
 import { AtomNodeProps } from "../types/molecule";
 import { useMoleculeStore } from "../store/useMoleculeStore";
 import { ELEMENT_DATA } from "../utils/elements";
@@ -35,16 +35,15 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
 
   const handleDragEnd = (e: any) => {
     const dropPixelPos = { x: e.target.x(), y: e.target.y() };
-    const targetHex = gridInstance.pointToHex(dropPixelPos);
+
+    // CORREÇÃO: Usar a nova variável gridMath
+    const targetHex = gridMath.pointToHex(dropPixelPos);
 
     if (targetHex) {
       updateAtomPosition(atom.id, targetHex.q, targetHex.r);
-
       const center = new CustomHex(targetHex);
       e.target.position({ x: center.x, y: center.y });
     }
-
-    // NOVO: Limpa a posição temporária de arrasto ao soltar o rato
     setAtomDragPosition(atom.id, null);
   };
 
