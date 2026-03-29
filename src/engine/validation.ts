@@ -34,10 +34,16 @@ const generateMolBlock = (
     molBlock += `${sIdx.toString().padStart(3)}${tIdx.toString().padStart(3)}${bond.order.toString().padStart(3)}  0  0  0  0\n`;
   });
 
+  atomList.forEach((atom, index) => {
+    if (atom.charge !== 0) {
+      // Formato: M  CHG  [num de entradas]  [indice do átomo]  [carga]
+      molBlock += `M  CHG  1 ${String(index + 1).padStart(3)} ${String(atom.charge).padStart(3)}\n`;
+    }
+  });
+
   molBlock += "M  END\n";
   return molBlock;
 };
-
 /**
  * Tenta criar uma molécula no RDKit. Se falhar, a ligação é quimicamente inválida.
  */

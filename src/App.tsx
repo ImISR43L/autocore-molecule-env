@@ -1,3 +1,4 @@
+// src/App.tsx
 import React, { useEffect, useState } from "react";
 import { MoleculeCanvas } from "./canvas/MoleculeCanvas";
 import { initRDKit } from "./engine/rdkit";
@@ -6,7 +7,6 @@ function App() {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    // Inicializa o motor químico ao montar o componente
     initRDKit().then(() => setIsReady(true));
   }, []);
 
@@ -37,11 +37,12 @@ function App() {
         overflow: "hidden",
       }}
     >
+      {/* CORREÇÃO: Mudamos o left de 20 para 100 */}
       <div
         style={{
           position: "absolute",
           top: 20,
-          left: 20,
+          left: 100,
           zIndex: 10,
           color: "#ffffff",
         }}

@@ -17,7 +17,6 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
     removeAtom,
     modifyAtomCharge,
     activePaletteElement,
-    selectedAtomId,
   } = useMoleculeStore();
   const isSelected = useMoleculeStore(
     (state) => state.selectedAtomId === atom.id,
@@ -110,14 +109,19 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
       {/* Símbolo do Elemento */}
       <Text
         text={atom.element}
-        fontSize={18 * visualData.radiusScale} // Escalar a fonte junto com o átomo
+        fontSize={20 * visualData.radiusScale}
         fontFamily="sans-serif"
         fontStyle="bold"
         fill={visualData.textColor}
+        // CORREÇÃO: Definimos o tamanho da caixa igual ao diâmetro do átomo
+        width={atomRadius * 2}
+        height={atomRadius * 2}
+        // Movemos a caixa para começar no canto superior esquerdo do círculo
+        x={-atomRadius}
+        y={-atomRadius}
+        // Alinhamento horizontal e vertical automáticos do Konva
         align="center"
         verticalAlign="middle"
-        offsetX={9 * visualData.radiusScale}
-        offsetY={9 * visualData.radiusScale}
         listening={false}
       />
 

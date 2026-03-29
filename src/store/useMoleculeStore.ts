@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { Atom, Bond, BondOrder, StereoType } from "../types/molecule";
 import { isChemistryValid } from "../engine/validation";
-import { CustomHex, gridInstance } from "../utils/grid";
 
 interface MoleculeState {
   atoms: Record<string, Atom>;
@@ -33,7 +32,11 @@ export const useMoleculeStore = create<MoleculeState>((set, get) => ({
   activePaletteElement: null, // Inicialmente nada selecionado
 
   // NOVO: Define qual elemento o utilizador quer desenhar
-  setActiveElement: (element) => set({ activePaletteElement: element }),
+  setActiveElement: (element) =>
+    set((state) => ({
+      activePaletteElement:
+        state.activePaletteElement === element ? null : element,
+    })),
 
   // NOVO: Adiciona o elemento ativo na posição clicada da grade
   addAtomToGrid: (q, r) =>
@@ -163,14 +166,24 @@ export const useMoleculeStore = create<MoleculeState>((set, get) => ({
       const atom = state.atoms[id];
       if (!atom) return state;
 
-      // Atualiza a carga (ex: se era 0 e delta é 1, passa a +1)
       const newCharge = atom.charge + delta;
 
-      return {
-        atoms: {
-          ...state.atoms,
-          [id]: { ...atom, charge: newCharge },
-        },
+      // Criamos um estado temporário para testar
+      const updatedAtoms = {
+        ...state.atoms,
+        [id]: { ...atom, charge: newCharge },
       };
+
+      // Perguntamos ao RDKit se essa carga é quimicamente possível
+      const validation = isChemistryValid(updatedAtoms, state.bonds);
+
+      if (!validation.valid) {
+        // Se o RDKit rejeitar (ex: tentar colocar +2 num Nitrogênio com 4 ligações)
+        console.warn(`Carga rejeitada pelo RDKit: ${validation.error}`);
+        return state; // Aborta a mudança e mantém o estado anterior
+      }
+
+      // Se passou, aplicamos a mudança
+      return { atoms: updatedAtoms };
     }),
 }));

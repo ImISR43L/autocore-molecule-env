@@ -11,7 +11,7 @@ import { gridInstance } from "../utils/grid"; // <-- Importar a instância da gr
 export const MoleculeCanvas: React.FC = () => {
   const stageRef = useRef<any>(null); // Referência para o palco do Konva
   const [dimensions, setDimensions] = useState({
-    width: window.innerWidth,
+    width: window.innerWidth - 80,
     height: window.innerHeight,
   });
 
@@ -21,8 +21,12 @@ export const MoleculeCanvas: React.FC = () => {
   const addAtomToGrid = useMoleculeStore((state) => state.addAtomToGrid); // Ler ação de adicionar
 
   useEffect(() => {
+    // CORREÇÃO: Subtraímos 80px no redimensionamento também
     const handleResize = () =>
-      setDimensions({ width: window.innerWidth, height: window.innerHeight });
+      setDimensions({
+        width: window.innerWidth - 80,
+        height: window.innerHeight,
+      });
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
@@ -63,14 +67,13 @@ export const MoleculeCanvas: React.FC = () => {
 
       <Stage
         ref={stageRef}
-        width={dimensions.width}
+        width={dimensions.width} // Agora ele tem o tamanho exato do espaço restante
         height={dimensions.height}
-        // Configurar o cursor dependendo se algo está selecionado
         style={{
           cursor: activeElement ? "crosshair" : "grab",
-          marginLeft: "80px", // Dá espaço para a paleta
+          marginLeft: "80px", // Empurra o canvas para a direita da paleta
         }}
-        onClick={handleStageClick} // Captura cliques no palco
+        onClick={handleStageClick}
       >
         <GridLayer />
 
