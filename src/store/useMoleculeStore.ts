@@ -37,6 +37,7 @@ interface MoleculeState {
   ) => void;
   modifyOrganicBond: (bondId: string, tool: string) => void;
   modifyOrganicAtom: (atomId: string, element: string) => void;
+  addOrganicRing: (centerX: number, centerY: number, ringType: string) => void;
 }
 
 const isOccupied = (atoms: Record<string, Atom>, q: number, r: number) => {
@@ -334,5 +335,67 @@ export const useMoleculeStore = create<MoleculeState>((set) => ({
       return {
         atoms: { ...state.atoms, [id]: { ...atom, element } },
       };
+    }),
+
+  addOrganicRing: (centerX, centerY, ringType) =>
+    set((state) => {
+      const newAtoms = { ...state.atoms };
+      const newBonds = [...state.bonds];
+
+      // Identifica o número de lados
+      const n = ringType === "RING_CYCLOPENTANE" ? 5 : 6;
+
+      // Mantém o tamanho da ligação (lado do polígono) igual ao do desenho livre
+      const BOND_LENGTH = 50;
+
+      // Calcula o raio perfeito para que o lado meça exatamente 50px
+      const radius = BOND_LENGTH / (2 * Math.sin(Math.PI / n));
+
+      const ringAtomIds: string[] = [];
+      const timestamp = Date.now();
+
+      // Passo A: Gerar os N átomos nas bordas do círculo
+      for (let i = 0; i < n; i++) {
+        // Subtrair Math.PI / 2 (90 graus) garante que o anel comece "em pé" (ponta para cima)
+        const angle = i * ((2 * Math.PI) / n) - Math.PI / 2;
+
+        const atomX = centerX + radius * Math.cos(angle);
+        const atomY = centerY + radius * Math.sin(angle);
+
+        const id = `atom_${timestamp}_ring_${i}`;
+        ringAtomIds.push(id);
+
+        newAtoms[id] = {
+          id,
+          element: "C",
+          charge: 0,
+          gridPosition: { q: 0, r: 0 },
+          x: atomX,
+          y: atomY,
+        };
+      }
+
+      // Passo B: Ligar os pontos para formar o ciclo
+      for (let i = 0; i < n; i++) {
+        const sourceId = ringAtomIds[i];
+        // O último átomo liga de volta ao primeiro (i=0) graças ao operador módulo (%)
+        const targetId = ringAtomIds[(i + 1) % n];
+
+        // Se for Benzeno, alterna entre ligação dupla (2) e simples (1)
+        let order = 1;
+        if (ringType === "RING_BENZENE" && i % 2 === 0) {
+          order = 2;
+        }
+
+        newBonds.push({
+          id: `bond_${timestamp}_ring_${i}`,
+          sourceId,
+          targetId,
+          order: order as BondOrder,
+          stereo: StereoType.NONE,
+        });
+      }
+
+      return { atoms: newAtoms, bonds: newBonds };
     }),
 }));

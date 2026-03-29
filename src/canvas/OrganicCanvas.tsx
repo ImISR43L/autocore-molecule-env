@@ -30,6 +30,7 @@ export const OrganicCanvas: React.FC = () => {
   const modifyOrganicAtom = useMoleculeStore(
     (state) => state.modifyOrganicAtom,
   ); // NOVO
+  const addOrganicRing = useMoleculeStore((state) => state.addOrganicRing);
   const removeAtom = useMoleculeStore((state) => state.removeAtom); // Já existia, vamos puxá-lo
 
   const isElementTool = (tool: string | null) => {
@@ -38,11 +39,21 @@ export const OrganicCanvas: React.FC = () => {
   };
 
   const handleMouseDown = (e: any) => {
+    // Para evitar clicar em ferramentas ou outras coisas do Stage
+    if (e.target.name() === "UI_ELEMENT") return;
+
     const pos = e.target.getStage().getPointerPosition();
+
+    // NOVO: Se a ferramenta for um Anel, desenha o polígono e aborta o zigue-zague
+    if (activePaletteElement && activePaletteElement.startsWith("RING_")) {
+      addOrganicRing(pos.x, pos.y, activePaletteElement);
+      return;
+    }
+
     setIsDrawing(true);
 
     // Se clicou num átomo, o ponto inicial é o centro dele. Se não, é onde o rato está.
-    if (hoveredAtomId) {
+    if (hoveredAtomId && atoms[hoveredAtomId]) {
       const atom = atoms[hoveredAtomId];
       setStartPos({ x: atom.x!, y: atom.y! });
     } else {
