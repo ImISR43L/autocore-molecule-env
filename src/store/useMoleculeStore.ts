@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { Atom, Bond, BondOrder, StereoType } from "../types/molecule";
-import { isChemistryValid } from "../engine/validation";
+import { isChemistryValid, exportMolecule } from "../engine/validation";
 
 export type BuilderMode = "INORGANIC" | "ORGANIC";
 
@@ -50,6 +50,7 @@ interface MoleculeState {
     clickX: number,
     clickY: number,
   ) => void;
+  exportCurrentMolecule: (format?: "molblock" | "smiles") => string | null;
 }
 
 const isOccupied = (atoms: Record<string, Atom>, q: number, r: number) => {
@@ -58,7 +59,7 @@ const isOccupied = (atoms: Record<string, Atom>, q: number, r: number) => {
   );
 };
 
-export const useMoleculeStore = create<MoleculeState>((set) => ({
+export const useMoleculeStore = create<MoleculeState>((set, get) => ({
   atoms: {},
   bonds: [],
   selectedAtomId: null,
@@ -655,4 +656,32 @@ export const useMoleculeStore = create<MoleculeState>((set) => ({
 
       return { atoms: newAtoms, bonds: newBonds };
     }),
+
+  exportCurrentMolecule: (format = "smiles") => {
+    const state = get(); // Pega o estado atual sem precisar de set()
+    const { atoms, bonds, mode } = state;
+
+    // 1. Filtra os átomos baseado na aba em que o utilizador está
+    const filteredAtoms: Record<string, Atom> = {};
+    for (const key in atoms) {
+      if (mode === "ORGANIC" && atoms[key].x !== undefined) {
+        filteredAtoms[key] = atoms[key];
+      } else if (mode === "INORGANIC" && atoms[key].x === undefined) {
+        filteredAtoms[key] = atoms[key];
+      }
+    }
+
+    // 2. Filtra as ligações correspondentes
+    const filteredBonds = bonds.filter(
+      (b) => filteredAtoms[b.sourceId] && filteredAtoms[b.targetId],
+    );
+
+    if (Object.keys(filteredAtoms).length === 0) {
+      alert("A tela está vazia!");
+      return null;
+    }
+
+    // 3. Chama o motor de exportação
+    return exportMolecule(filteredAtoms, filteredBonds, format);
+  },
 }));

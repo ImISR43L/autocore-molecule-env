@@ -9,6 +9,9 @@ import { initRDKit } from "./engine/rdkit"; // Importamos a função de iniciali
 function App() {
   const mode = useMoleculeStore((state) => state.mode);
   const setMode = useMoleculeStore((state) => state.setMode);
+  const exportCurrentMolecule = useMoleculeStore(
+    (state) => state.exportCurrentMolecule,
+  ); // NOVO
 
   // NOVO: Estado para controlar se o motor WASM já carregou
   const [isEngineReady, setIsEngineReady] = useState(false);
@@ -158,6 +161,43 @@ function App() {
 
       {/* Renderização Condicional do Canvas */}
       {mode === "INORGANIC" ? <MoleculeCanvas /> : <OrganicCanvas />}
+
+      <button
+        onClick={() => {
+          const smiles = exportCurrentMolecule("smiles");
+          if (smiles) {
+            // Aqui seria a sua chamada de API (axios.post('http://localhost:3000/corrigir', { smiles }))
+            alert(
+              `✅ Molécula exportada com sucesso!\n\nSMILES: ${smiles}\n\nEste texto seria enviado para o NestJS corrigir.`,
+            );
+            console.log("SMILES Gerado:", smiles);
+          }
+        }}
+        style={{
+          position: "absolute",
+          top: "20px",
+          right: "20px",
+          zIndex: 10,
+          padding: "10px 24px",
+          backgroundColor: "#27ae60",
+          color: "white",
+          border: "none",
+          borderRadius: "8px",
+          fontSize: "16px",
+          fontWeight: "bold",
+          cursor: "pointer",
+          boxShadow: "0 4px 6px rgba(0,0,0,0.3)",
+          transition: "background 0.2s",
+        }}
+        onMouseEnter={(e) =>
+          (e.currentTarget.style.backgroundColor = "#2ecc71")
+        }
+        onMouseLeave={(e) =>
+          (e.currentTarget.style.backgroundColor = "#27ae60")
+        }
+      >
+        Corrigir Exercício
+      </button>
     </div>
   );
 }

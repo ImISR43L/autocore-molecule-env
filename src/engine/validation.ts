@@ -154,3 +154,32 @@ export const isChemistryValid = (
     return { valid: false, error: "Erro interno no motor de química." };
   }
 };
+
+export const exportMolecule = (
+  atoms: Record<string, Atom>,
+  bonds: Bond[],
+  format: "molblock" | "smiles" = "smiles",
+): string | null => {
+  if (Object.keys(atoms).length === 0) return null;
+
+  try {
+    const molBlock = generateMolBlock(atoms, bonds);
+
+    // Se o backend preferir o ficheiro V2000 completo, retorna logo aqui
+    if (format === "molblock") return molBlock;
+
+    // Caso contrário, pede ao RDKit para converter em SMILES
+    const RDKit = getRDKit();
+    const mol = RDKit.get_mol(molBlock);
+
+    if (!mol) return null;
+
+    const smiles = mol.get_smiles();
+    mol.delete(); // Limpa a memória WASM
+
+    return smiles;
+  } catch (error) {
+    console.error("Erro ao exportar a molécula:", error);
+    return null;
+  }
+};
