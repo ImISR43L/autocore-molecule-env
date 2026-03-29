@@ -11,7 +11,7 @@ export const GridLayer: React.FC = () => {
 
   useEffect(() => {
     const handleResize = () => {
-      setGrid(getVisualGrid(window.innerWidth - 80, window.innerHeight));
+      setGrid(getVisualGrid(window.innerWidth - 220, window.innerHeight));
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);

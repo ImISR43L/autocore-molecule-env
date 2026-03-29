@@ -10,24 +10,26 @@ import { gridMath } from "../utils/grid"; // <-- Importar a instância da grade
 
 export const MoleculeCanvas: React.FC = () => {
   const stageRef = useRef<any>(null); // Referência para o palco do Konva
-  const [dimensions, setDimensions] = useState({
-    width: window.innerWidth - 80,
-    height: window.innerHeight,
-  });
-
   const atoms = useMoleculeStore((state) => state.atoms);
   const bonds = useMoleculeStore((state) => state.bonds);
   const activeElement = useMoleculeStore((state) => state.activePaletteElement); // Ler elemento ativo
   const addAtomToGrid = useMoleculeStore((state) => state.addAtomToGrid); // Ler ação de adicionar
   const isGridVisible = useMoleculeStore((state) => state.isGridVisible);
 
+  const [dimensions, setDimensions] = useState({
+    width: window.innerWidth - 220, // ANTES ERA 80
+    height: window.innerHeight,
+  });
+
   useEffect(() => {
-    // CORREÇÃO: Subtraímos 80px no redimensionamento também
-    const handleResize = () =>
+    const handleResize = () => {
+      // 2. Atualize também dentro do evento de resize:
       setDimensions({
-        width: window.innerWidth - 80,
+        width: window.innerWidth - 220, // ANTES ERA 80
         height: window.innerHeight,
       });
+    };
+
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
@@ -72,7 +74,7 @@ export const MoleculeCanvas: React.FC = () => {
         height={dimensions.height}
         style={{
           cursor: activeElement ? "crosshair" : "grab",
-          marginLeft: "80px",
+          marginLeft: "220px",
         }}
         onClick={handleStageClick}
       >

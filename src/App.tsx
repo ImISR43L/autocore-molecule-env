@@ -42,7 +42,7 @@ function App() {
         style={{
           position: "absolute",
           top: 20,
-          left: 100,
+          left: 240,
           zIndex: 10,
           color: "#ffffff",
         }}
