@@ -14,6 +14,9 @@ interface MoleculeState {
   addAtomToGrid: (q: number, r: number) => void; // <-- NOVO: Ação para clicar na grade e adicionar
   updateAtomPosition: (id: string, q: number, r: number) => void;
   selectAtom: (id: string) => void;
+  removeAtom: (id: string) => void;
+  cycleBondOrder: (bondId: string) => void;
+  removeBond: (id: string) => void;
 }
 
 const isOccupied = (atoms: Record<string, Atom>, q: number, r: number) => {
@@ -53,6 +56,25 @@ export const useMoleculeStore = create<MoleculeState>((set, get) => ({
         atoms: { ...atoms, [newId]: newAtom },
         // Opcional: Limpar a seleção da paleta após adicionar
         activePaletteElement: null,
+      };
+    }),
+
+  removeAtom: (id) =>
+    set((state) => {
+      // 1. Removemos o átomo do dicionário
+      const { [id]: _, ...remainingAtoms } = state.atoms;
+
+      // 2. Removemos todas as ligações que apontavam para esse átomo
+      const remainingBonds = state.bonds.filter(
+        (bond) => bond.sourceId !== id && bond.targetId !== id,
+      );
+
+      return {
+        atoms: remainingAtoms,
+        bonds: remainingBonds,
+        // Se o átomo removido estava selecionado para uma ligação, limpamos a seleção
+        selectedAtomId:
+          state.selectedAtomId === id ? null : state.selectedAtomId,
       };
     }),
 
@@ -105,4 +127,33 @@ export const useMoleculeStore = create<MoleculeState>((set, get) => ({
         selectedAtomId: null,
       };
     }),
+
+  cycleBondOrder: (bondId) =>
+    set((state) => {
+      const bondIndex = state.bonds.findIndex((b) => b.id === bondId);
+      if (bondIndex === -1) return state;
+
+      const currentBond = state.bonds[bondIndex];
+      // Ciclo: 1 -> 2 -> 3 -> 1
+      const nextOrder =
+        currentBond.order >= 3 ? 1 : ((currentBond.order + 1) as BondOrder);
+
+      // Criamos uma cópia das ligações com a nova ordem para validar
+      const updatedBonds = [...state.bonds];
+      updatedBonds[bondIndex] = { ...currentBond, order: nextOrder };
+
+      // Validação Química com RDKit
+      const validation = isChemistryValid(state.atoms, updatedBonds);
+      if (!validation.valid) {
+        alert(`Violação de Valência: ${validation.error}`);
+        return state;
+      }
+
+      return { bonds: updatedBonds };
+    }),
+
+  removeBond: (id) =>
+    set((state) => ({
+      bonds: state.bonds.filter((bond) => bond.id !== id),
+    })),
 }));

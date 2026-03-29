@@ -1,40 +1,99 @@
 // src/canvas/BondLine.tsx
 import React from "react";
-import { Line } from "react-konva";
-import { Bond } from "../types/molecule";
+import { Line, Group } from "react-konva";
+import { Bond, BondOrder } from "../types/molecule";
 import { CustomHex } from "../utils/grid";
 import { useMoleculeStore } from "../store/useMoleculeStore";
 
-interface BondLineProps {
-  bond: Bond;
-}
-
-export const BondLine: React.FC<BondLineProps> = ({ bond }) => {
-  // O componente "escuta" apenas os dois átomos envolvidos nesta ligação.
-  // Se um deles for arrastado, APENAS esta linha é re-renderizada!
+export const BondLine: React.FC<{ bond: Bond }> = ({ bond }) => {
   const sourceAtom = useMoleculeStore((state) => state.atoms[bond.sourceId]);
   const targetAtom = useMoleculeStore((state) => state.atoms[bond.targetId]);
+  const removeBond = useMoleculeStore((state) => state.removeBond);
+  const cycleBondOrder = useMoleculeStore((state) => state.cycleBondOrder);
+  const activePaletteElement = useMoleculeStore(
+    (state) => state.activePaletteElement,
+  );
 
   if (!sourceAtom || !targetAtom) return null;
 
-  const sourceHex = new CustomHex({
+  const s = new CustomHex({
     q: sourceAtom.gridPosition.q,
     r: sourceAtom.gridPosition.r,
   });
-  const targetHex = new CustomHex({
+  const t = new CustomHex({
     q: targetAtom.gridPosition.q,
     r: targetAtom.gridPosition.r,
   });
 
-  return (
+  // Cálculo do vetor normal para deslocamento lateral
+  const dx = t.x - s.x;
+  const dy = t.y - s.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const nx = -dy / dist;
+  const ny = dx / dist;
+
+  const gap = 6; // Espaço entre as linhas da ligação dupla/tripla
+
+  // Função auxiliar para renderizar uma única linha com offset
+  const renderLine = (offset: number, key: string) => (
     <Line
-      // Array de coordenadas [x1, y1, x2, y2]
-      points={[sourceHex.x, sourceHex.y, targetHex.x, targetHex.y]}
-      stroke="#cccccc" // Uma cor cinza claro para a ligação
-      strokeWidth={6}
+      key={key}
+      points={[
+        s.x + nx * offset,
+        s.y + ny * offset,
+        t.x + nx * offset,
+        t.y + ny * offset,
+      ]}
+      stroke="#cccccc"
+      strokeWidth={4}
       lineCap="round"
-      listening={false} // Evita roubar eventos de clique dos átomos
-      perfectDrawEnabled={false} // Otimização de performance
+      perfectDrawEnabled={false}
     />
+  );
+
+  const handleBondClick = () => {
+    if (activePaletteElement === "ERASER") {
+      removeBond(bond.id);
+    } else {
+      cycleBondOrder(bond.id);
+    }
+  };
+
+  return (
+    <Group
+      onClick={handleBondClick}
+      onMouseEnter={(e) => {
+        const container = e.target.getStage()?.container();
+        if (container) container.style.cursor = "pointer";
+      }}
+      onMouseLeave={(e) => {
+        const container = e.target.getStage()?.container();
+        if (container) container.style.cursor = "default";
+      }}
+    >
+      {/* Hitbox para facilitar o clique */}
+      <Line
+        points={[s.x, s.y, t.x, t.y]}
+        stroke="transparent"
+        strokeWidth={15}
+      />
+
+      {bond.order === BondOrder.SINGLE && renderLine(0, "single")}
+
+      {bond.order === BondOrder.DOUBLE && (
+        <>
+          {renderLine(gap / 2, "d1")}
+          {renderLine(-gap / 2, "d2")}
+        </>
+      )}
+
+      {bond.order === BondOrder.TRIPLE && (
+        <>
+          {renderLine(0, "t1")}
+          {renderLine(gap, "t2")}
+          {renderLine(-gap, "t3")}
+        </>
+      )}
+    </Group>
   );
 };

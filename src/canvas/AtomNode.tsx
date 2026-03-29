@@ -13,10 +13,14 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
   const updateAtomPosition = useMoleculeStore(
     (state) => state.updateAtomPosition,
   );
-  const selectAtom = useMoleculeStore((state) => state.selectAtom); // Nova ação
+  const selectAtom = useMoleculeStore((state) => state.selectAtom);
+  const removeAtom = useMoleculeStore((state) => state.removeAtom); // Importar ação
+  const activePaletteElement = useMoleculeStore(
+    (state) => state.activePaletteElement,
+  );
   const isSelected = useMoleculeStore(
     (state) => state.selectedAtomId === atom.id,
-  ); // Verifica se é o selecionado
+  );
 
   // A posição visual é 100% amarrada à lógica do Zustand
   const hex = new CustomHex({ q: atom.gridPosition.q, r: atom.gridPosition.r });
@@ -51,6 +55,14 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
     }
   };
 
+  const handleClick = () => {
+    if (activePaletteElement === "ERASER") {
+      removeAtom(atom.id);
+    } else {
+      selectAtom(atom.id);
+    }
+  };
+
   return (
     <Group
       x={hex.x}
@@ -65,7 +77,7 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
         const container = e.target.getStage()?.container();
         if (container) container.style.cursor = "default";
       }}
-      onClick={() => selectAtom(atom.id)}
+      onClick={handleClick}
     >
       <Circle
         radius={HEX_RADIUS * 0.6}
@@ -74,6 +86,7 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
         strokeWidth={2}
         perfectDrawEnabled={false} // Desliga cálculos caros de borda durante o arraste
         transformsEnabled="position" // Diz ao Konva para não calcular rotação ou escala neste círculo
+        opacity={activePaletteElement === "ERASER" ? 0.8 : 1}
       />
 
       <Text

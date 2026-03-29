@@ -67,6 +67,24 @@ export const ElementPalette: React.FC = () => {
           </button>
         );
       })}
+
+      <button
+        onClick={() => setActiveElement("ERASER")}
+        title="Remover Átomo"
+        style={{
+          width: "50px",
+          height: "50px",
+          borderRadius: "8px",
+          backgroundColor: activeElement === "ERASER" ? "#e74c3c" : "#95a5a6",
+          border: "none",
+          cursor: "pointer",
+          fontSize: "20px",
+          transition: "all 0.2s",
+          boxShadow: activeElement === "ERASER" ? "0 0 10px #e74c3c" : "none",
+        }}
+      >
+        🗑️
+      </button>
     </div>
   );
 };
