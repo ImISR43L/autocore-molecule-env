@@ -1,5 +1,5 @@
 // src/canvas/MoleculeCanvas.tsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Stage, Layer } from "react-konva";
 import { GridLayer } from "./GridLayer";
 import { AtomNode } from "./AtomNode";
@@ -7,11 +7,27 @@ import { BondLine } from "./BondLine";
 import { ElementPalette } from "../components/ElementPalette"; // <-- Importar a Paleta
 import { useMoleculeStore } from "../store/useMoleculeStore";
 import { gridMath } from "../utils/grid"; // <-- Importar a instância da grade
+import { Atom } from "../types/molecule";
 
 export const MoleculeCanvas: React.FC = () => {
   const stageRef = useRef<any>(null); // Referência para o palco do Konva
-  const atoms = useMoleculeStore((state) => state.atoms);
-  const bonds = useMoleculeStore((state) => state.bonds);
+  const allAtoms = useMoleculeStore((state) => state.atoms);
+  const allBonds = useMoleculeStore((state) => state.bonds);
+
+  // 2. Filtramos localmente, apenas quando o estado bruto mudar
+  const atoms = useMemo(() => {
+    const filtered: Record<string, Atom> = {};
+    for (const key in allAtoms) {
+      if (allAtoms[key].x === undefined) {
+        filtered[key] = allAtoms[key];
+      }
+    }
+    return filtered;
+  }, [allAtoms]);
+
+  const bonds = useMemo(() => {
+    return allBonds.filter((b) => allAtoms[b.sourceId]?.x === undefined);
+  }, [allBonds, allAtoms]);
   const activeElement = useMoleculeStore((state) => state.activePaletteElement); // Ler elemento ativo
   const addAtomToGrid = useMoleculeStore((state) => state.addAtomToGrid); // Ler ação de adicionar
   const isGridVisible = useMoleculeStore((state) => state.isGridVisible);

@@ -1,9 +1,10 @@
 // src/canvas/OrganicCanvas.tsx
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Stage, Layer, Line, Circle, Text } from "react-konva";
 import { useMoleculeStore } from "../store/useMoleculeStore";
 import { ELEMENT_DATA } from "../utils/elements";
 import { OrganicBondLine } from "./OrganicBondLine";
+import { Atom } from "../types/molecule";
 
 const BOND_LENGTH = 50; // Comprimento padrão de uma ligação orgânica
 
@@ -11,8 +12,23 @@ export const OrganicCanvas: React.FC = () => {
   const width = window.innerWidth - 220;
   const height = window.innerHeight;
 
-  const atoms = useMoleculeStore((state) => state.atoms);
-  const bonds = useMoleculeStore((state) => state.bonds);
+  const allAtoms = useMoleculeStore((state) => state.atoms);
+  const allBonds = useMoleculeStore((state) => state.bonds);
+
+  // 2. Filtramos localmente para obter apenas os orgânicos
+  const atoms = useMemo(() => {
+    const filtered: Record<string, Atom> = {};
+    for (const key in allAtoms) {
+      if (allAtoms[key].x !== undefined) {
+        filtered[key] = allAtoms[key];
+      }
+    }
+    return filtered;
+  }, [allAtoms]);
+
+  const bonds = useMemo(() => {
+    return allBonds.filter((b) => allAtoms[b.sourceId]?.x !== undefined);
+  }, [allBonds, allAtoms]);
   const addOrganicConnection = useMoleculeStore(
     (state) => state.addOrganicConnection,
   );

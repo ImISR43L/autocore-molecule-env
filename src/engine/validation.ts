@@ -80,44 +80,77 @@ const generateMolBlock = (
 /**
  * Tenta criar uma molécula no RDKit. Se falhar, a ligação é quimicamente inválida.
  */
+// src/engine/validation.ts (no final do ficheiro)
+
 export const isChemistryValid = (
   atoms: Record<string, Atom>,
   bonds: Bond[],
 ): { valid: boolean; error?: string } => {
-  // Moléculas vazias são válidas no Canvas, mas não precisam ir ao RDKit
+  // Moléculas vazias são sempre válidas
   if (Object.keys(atoms).length === 0) return { valid: true };
+
+  // 1. Separa os ambientes (Workspaces)
+  const orgAtoms: Record<string, Atom> = {};
+  const inorgAtoms: Record<string, Atom> = {};
+
+  for (const key in atoms) {
+    if (atoms[key].x !== undefined) {
+      orgAtoms[key] = atoms[key];
+    } else {
+      inorgAtoms[key] = atoms[key];
+    }
+  }
+
+  const orgBonds = bonds.filter(
+    (b) => orgAtoms[b.sourceId] && orgAtoms[b.targetId],
+  );
+  const inorgBonds = bonds.filter(
+    (b) => inorgAtoms[b.sourceId] && inorgAtoms[b.targetId],
+  );
 
   try {
     const RDKit = getRDKit();
-    const molBlock = generateMolBlock(atoms, bonds);
 
-    let mol;
-    try {
-      // O RDKit tentará "Sanitizar" (validar valências e geometria) automaticamente.
-      mol = RDKit.get_mol(molBlock);
-    } catch (parseError) {
-      // Se o motor C++ rebentar, capturamos o erro aqui sem congelar o ecrã
-      console.error("RDKit rejeitou a estrutura:", parseError);
-      return {
-        valid: false,
-        error: "Geometria impossível ou erro estrutural grave.",
-      };
+    // 2. Valida o ambiente Orgânico (se houver moléculas lá)
+    if (Object.keys(orgAtoms).length > 0) {
+      const molBlockOrg = generateMolBlock(orgAtoms, orgBonds);
+      try {
+        const molOrg = RDKit.get_mol(molBlockOrg);
+        if (!molOrg)
+          return { valid: false, error: "Erro de Valência no modo Orgânico." };
+        molOrg.delete();
+      } catch (e) {
+        console.error("RDKit rejeitou orgânica:", e);
+        return {
+          valid: false,
+          error: "Geometria impossível no modo Orgânico.",
+        };
+      }
     }
 
-    if (!mol) {
-      return {
-        valid: false,
-        error:
-          "Valência excedida ou elemento químico não suporta esta configuração.",
-      };
+    // 3. Valida o ambiente Inorgânico (se houver moléculas lá)
+    if (Object.keys(inorgAtoms).length > 0) {
+      const molBlockInorg = generateMolBlock(inorgAtoms, inorgBonds);
+      try {
+        const molInorg = RDKit.get_mol(molBlockInorg);
+        if (!molInorg)
+          return {
+            valid: false,
+            error: "Erro de Valência no modo Inorgânico.",
+          };
+        molInorg.delete();
+      } catch (e) {
+        console.error("RDKit rejeitou inorgânica:", e);
+        return {
+          valid: false,
+          error: "Geometria impossível no modo Inorgânico.",
+        };
+      }
     }
 
-    // Passou na validação! Limpar memória do WASM
-    mol.delete();
     return { valid: true };
   } catch (globalError) {
     console.error("Erro fatal no validador:", globalError);
-    // Em caso de falha sistémica, bloqueamos a ação para não corromper o estado do aluno
     return { valid: false, error: "Erro interno no motor de química." };
   }
 };
