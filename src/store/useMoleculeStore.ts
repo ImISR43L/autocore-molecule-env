@@ -303,6 +303,12 @@ export const useMoleculeStore = create<MoleculeState>((set) => ({
         });
       }
 
+      const validation = isChemistryValid(newAtoms, newBonds);
+      if (!validation.valid) {
+        alert(`Erro Químico: ${validation.error}`);
+        return state; // Aborta a criação da linha se a valência estourar
+      }
+
       return { atoms: newAtoms, bonds: newBonds };
     }),
 
@@ -346,6 +352,12 @@ export const useMoleculeStore = create<MoleculeState>((set) => ({
       }
 
       updatedBonds[bondIndex] = bond;
+      const validation = isChemistryValid(state.atoms, updatedBonds);
+      if (!validation.valid) {
+        alert(`Violação de Valência: ${validation.error}`);
+        return state; // Reverte se tentar fazer uma tripla num carbono que já tem outras ligações
+      }
+
       return { bonds: updatedBonds };
     }),
 
@@ -354,10 +366,18 @@ export const useMoleculeStore = create<MoleculeState>((set) => ({
       const atom = state.atoms[id];
       if (!atom) return state;
 
-      // Altera o elemento químico do vértice
-      return {
-        atoms: { ...state.atoms, [id]: { ...atom, element } },
-      };
+      const updatedAtoms = { ...state.atoms, [id]: { ...atom, element } };
+
+      // NOVO: Validação Química
+      const validation = isChemistryValid(updatedAtoms, state.bonds);
+      if (!validation.valid) {
+        alert(
+          `Erro Químico: O elemento ${element} não suporta essa quantidade de ligações neste ponto. (${validation.error})`,
+        );
+        return state;
+      }
+
+      return { atoms: updatedAtoms };
     }),
 
   addOrganicRing: (centerX, centerY, ringType, anchorAtomId) =>
@@ -463,6 +483,14 @@ export const useMoleculeStore = create<MoleculeState>((set) => ({
           order: order as BondOrder,
           stereo: StereoType.NONE,
         });
+      }
+
+      const validation = isChemistryValid(newAtoms, newBonds);
+      if (!validation.valid) {
+        alert(
+          `Violação de Valência: Não é possível ramificar um anel aqui. (${validation.error})`,
+        );
+        return state;
       }
 
       return { atoms: newAtoms, bonds: newBonds };
@@ -615,6 +643,14 @@ export const useMoleculeStore = create<MoleculeState>((set) => ({
             stereo: StereoType.NONE,
           });
         }
+      }
+
+      const validation = isChemistryValid(newAtoms, newBonds);
+      if (!validation.valid) {
+        alert(
+          `Violação de Valência: Fusão química impossível neste local. (${validation.error})`,
+        );
+        return state;
       }
 
       return { atoms: newAtoms, bonds: newBonds };

@@ -1,12 +1,79 @@
+// src/App.tsx
+import React, { useEffect, useState } from "react";
 import { MoleculeCanvas } from "./canvas/MoleculeCanvas";
-import { OrganicCanvas } from "./canvas/OrganicCanvas"; // Importe o novo canvas
+import { OrganicCanvas } from "./canvas/OrganicCanvas";
 import { useMoleculeStore } from "./store/useMoleculeStore";
 import { ElementPalette } from "./components/ElementPalette";
+import { initRDKit } from "./engine/rdkit"; // Importamos a função de inicialização
 
 function App() {
   const mode = useMoleculeStore((state) => state.mode);
   const setMode = useMoleculeStore((state) => state.setMode);
 
+  // NOVO: Estado para controlar se o motor WASM já carregou
+  const [isEngineReady, setIsEngineReady] = useState(false);
+  const [engineError, setEngineError] = useState<string | null>(null);
+
+  // NOVO: Efeito que arranca o RDKit assim que a App monta
+  useEffect(() => {
+    const startEngine = async () => {
+      try {
+        await initRDKit();
+        setIsEngineReady(true);
+      } catch (error) {
+        console.error("Falha ao arrancar o motor:", error);
+        setEngineError("Não foi possível carregar o motor de química.");
+      }
+    };
+
+    startEngine();
+  }, []);
+
+  // NOVO: Ecrã de erro caso o WASM falhe a carregar
+  if (engineError) {
+    return (
+      <div
+        style={{
+          width: "100vw",
+          height: "100vh",
+          backgroundColor: "#1e272e",
+          color: "white",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <h2>{engineError}</h2>
+      </div>
+    );
+  }
+
+  // NOVO: Ecrã de Loading enquanto o WASM não estiver pronto
+  if (!isEngineReady) {
+    return (
+      <div
+        style={{
+          width: "100vw",
+          height: "100vh",
+          backgroundColor: "#1e272e",
+          color: "white",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <h2 style={{ fontFamily: "sans-serif" }}>
+          Inicializando Motor Autocore...
+        </h2>
+        <p style={{ color: "#bdc3c7" }}>
+          Carregando módulos de química estrutural
+        </p>
+      </div>
+    );
+  }
+
+  // O resto da sua App mantém-se igual! O utilizador só chega aqui quando o RDKit já existe na memória.
   return (
     <div
       style={{
@@ -22,7 +89,7 @@ function App() {
         style={{
           position: "absolute",
           top: "20px",
-          left: "240px", // Respeitando a barra lateral de 220px + 20px de margem
+          left: "240px",
           zIndex: 10,
           display: "flex",
           alignItems: "center",

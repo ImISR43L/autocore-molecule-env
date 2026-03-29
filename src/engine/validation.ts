@@ -3,8 +3,7 @@ import { getRDKit } from "./rdkit";
 import { Atom, Bond } from "../types/molecule";
 
 /**
- * Converte o estado atual do Grafo para um formato MolBlock simplificado.
- * O RDKit usa esse formato para entender a conectividade.
+ * Converte o estado atual do Grafo para um formato MolBlock V2000 estrito.
  */
 const generateMolBlock = (
   atoms: Record<string, Atom>,
@@ -14,31 +13,62 @@ const generateMolBlock = (
   const nAtoms = atomList.length;
   const nBonds = bonds.length;
 
-  // Cabeçalho básico de um arquivo .mol
-  let molBlock = `\n     RDKit          2D\n\n`;
-  molBlock += `${nAtoms.toString().padStart(3)}${nBonds.toString().padStart(3)}  0  0  0  0  0  0  0  0  1 V2000\n`;
+  // Cabeçalho V2000 padrão (3 linhas rigorosas)
+  let molBlock = `Autocore\n  RDKit 2D\n\n`;
+  molBlock += `${nAtoms.toString().padStart(3, " ")}${nBonds.toString().padStart(3, " ")}  0  0  0  0  0  0  0  0  1 V2000\n`;
 
   // Seção de Átomos
   const atomIdToIndex: Record<string, number> = {};
   atomList.forEach((atom, index) => {
     atomIdToIndex[atom.id] = index + 1;
-    const { q, r } = atom.gridPosition;
-    // Usamos as coordenadas da grade para o RDKit ter uma noção espacial
-    molBlock += `    ${q.toFixed(4)}    ${r.toFixed(4)}    0.0000 ${atom.element.padEnd(3)} 0  0  0  0  0  0  0  0  0  0  0  0\n`;
+
+    let coordX = 0;
+    let coordY = 0;
+
+    // Proteção contra NaN e undefined
+    if (
+      typeof atom.x === "number" &&
+      typeof atom.y === "number" &&
+      !isNaN(atom.x) &&
+      !isNaN(atom.y)
+    ) {
+      // Normalizamos dividindo por 50 (que é o nosso BOND_LENGTH).
+      // Assim, as ligações no RDKit medem perfeitamente 1.0 Angstrom (geometria ideal!)
+      coordX = atom.x / 50;
+      coordY = -atom.y / 50;
+    } else if (atom.gridPosition) {
+      coordX = atom.gridPosition.q || 0;
+      coordY = atom.gridPosition.r || 0;
+    }
+
+    const xStr = coordX.toFixed(4).padStart(10, " ");
+    const yStr = coordY.toFixed(4).padStart(10, " ");
+    const zStr = "0.0000".padStart(10, " ");
+    const elementStr = atom.element.padEnd(3, " ");
+
+    molBlock += `${xStr}${yStr}${zStr} ${elementStr} 0  0  0  0  0  0  0  0  0  0  0  0\n`;
   });
 
   // Seção de Ligações
   bonds.forEach((bond) => {
     const sIdx = atomIdToIndex[bond.sourceId];
     const tIdx = atomIdToIndex[bond.targetId];
-    molBlock += `${sIdx.toString().padStart(3)}${tIdx.toString().padStart(3)}${bond.order.toString().padStart(3)}  0  0  0  0\n`;
+
+    // Proteção: Se a ligação apontar para um átomo fantasma, ignora-a para não quebrar a string
+    if (!sIdx || !tIdx) return;
+
+    const sStr = sIdx.toString().padStart(3, " ");
+    const tStr = tIdx.toString().padStart(3, " ");
+    const orderStr = bond.order.toString().padStart(3, " ");
+
+    molBlock += `${sStr}${tStr}${orderStr}  0  0  0  0\n`;
   });
 
+  // Seção de Cargas
   atomList.forEach((atom, index) => {
-    if (atom.charge !== 0) {
-      // O V2000 exige exatamente: "M  CHG  1" seguido pelo index (4 espaços) e a carga (4 espaços)
-      const idx = String(index + 1).padStart(4);
-      const chg = String(atom.charge).padStart(4);
+    if (atom.charge && atom.charge !== 0) {
+      const idx = String(index + 1).padStart(4, " ");
+      const chg = String(atom.charge).padStart(4, " ");
       molBlock += `M  CHG  1${idx}${chg}\n`;
     }
   });
@@ -46,6 +76,7 @@ const generateMolBlock = (
   molBlock += "M  END\n";
   return molBlock;
 };
+
 /**
  * Tenta criar uma molécula no RDKit. Se falhar, a ligação é quimicamente inválida.
  */
@@ -53,20 +84,40 @@ export const isChemistryValid = (
   atoms: Record<string, Atom>,
   bonds: Bond[],
 ): { valid: boolean; error?: string } => {
-  const RDKit = getRDKit();
-  const molBlock = generateMolBlock(atoms, bonds);
+  // Moléculas vazias são válidas no Canvas, mas não precisam ir ao RDKit
+  if (Object.keys(atoms).length === 0) return { valid: true };
 
-  // Tenta carregar a molécula. O RDKit tentará "Sanitizar" (validar valências) automaticamente.
-  const mol = RDKit.get_mol(molBlock);
+  try {
+    const RDKit = getRDKit();
+    const molBlock = generateMolBlock(atoms, bonds);
 
-  if (!mol) {
-    return {
-      valid: false,
-      error: "Valência excedida ou geometria impossível.",
-    };
+    let mol;
+    try {
+      // O RDKit tentará "Sanitizar" (validar valências e geometria) automaticamente.
+      mol = RDKit.get_mol(molBlock);
+    } catch (parseError) {
+      // Se o motor C++ rebentar, capturamos o erro aqui sem congelar o ecrã
+      console.error("RDKit rejeitou a estrutura:", parseError);
+      return {
+        valid: false,
+        error: "Geometria impossível ou erro estrutural grave.",
+      };
+    }
+
+    if (!mol) {
+      return {
+        valid: false,
+        error:
+          "Valência excedida ou elemento químico não suporta esta configuração.",
+      };
+    }
+
+    // Passou na validação! Limpar memória do WASM
+    mol.delete();
+    return { valid: true };
+  } catch (globalError) {
+    console.error("Erro fatal no validador:", globalError);
+    // Em caso de falha sistémica, bloqueamos a ação para não corromper o estado do aluno
+    return { valid: false, error: "Erro interno no motor de química." };
   }
-
-  // Se chegou aqui, a molécula é válida. Precisamos deletar o objeto da memória C++ do WASM.
-  mol.delete();
-  return { valid: true };
 };
