@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { Stage, Layer, Line, Circle, Text } from "react-konva";
 import { useMoleculeStore } from "../store/useMoleculeStore";
 import { ELEMENT_DATA } from "../utils/elements";
+import { OrganicBondLine } from "./OrganicBondLine";
 
 const BOND_LENGTH = 50; // Comprimento padrão de uma ligação orgânica
 
@@ -188,28 +189,26 @@ export const OrganicCanvas: React.FC = () => {
             dash = [4, 4];
           }
 
-          // --- NOVO: LÓGICA DE DESTAQUE INTERATIVO (HOVER) ---
           if (hoveredBondId === bond.id && activePaletteElement) {
             if (activePaletteElement.startsWith("RING_")) {
-              strokeColor = "#f39c12"; // Laranja: Indica que vai fundir um anel aqui
-              strokeWidth += 2;
+              strokeColor = "#f39c12"; // Laranja: Fusão de anel
             } else if (activePaletteElement === "ERASER") {
-              strokeColor = "#e74c3c"; // Vermelho: Indica que vai apagar
+              strokeColor = "#e74c3c"; // Vermelho: Apagar
             } else if (activePaletteElement.startsWith("BOND_")) {
-              strokeColor = "#3498db"; // Azul: Indica que vai alterar a ligação
+              strokeColor = "#3498db"; // Azul: Mudar ligação
             }
           }
-          // --------------------------------------------------
 
+          // Renderize o novo componente orgânico em vez da <Line>
           return (
-            <Line
+            <OrganicBondLine
               key={bond.id}
-              points={[s.x!, s.y!, t.x!, t.y!]}
-              stroke={strokeColor}
-              strokeWidth={strokeWidth}
-              dash={dash}
-              lineCap="round"
-              hitStrokeWidth={15}
+              id={bond.id}
+              s={{ x: s.x!, y: s.y! }}
+              t={{ x: t.x!, y: t.y! }}
+              order={bond.order}
+              stereo={bond.stereo}
+              strokeColor={strokeColor}
               onMouseDown={(e) => {
                 e.cancelBubble = true;
                 if (
@@ -220,24 +219,13 @@ export const OrganicCanvas: React.FC = () => {
                   if (!stage) return;
                   const pos = stage.getPointerPosition();
                   if (!pos) return;
-
                   addFusedRing(bond.id, activePaletteElement, pos.x, pos.y);
                 } else if (activePaletteElement) {
                   modifyOrganicBond(bond.id, activePaletteElement);
                 }
               }}
-              // --- NOVO: Atualizamos os eventos para ativar o Hover ---
-              onMouseEnter={(e) => {
-                setHoveredBondId(bond.id);
-                const stage = e.target.getStage();
-                if (stage && activePaletteElement)
-                  stage.container().style.cursor = "pointer";
-              }}
-              onMouseLeave={(e) => {
-                setHoveredBondId(null);
-                const stage = e.target.getStage();
-                if (stage) stage.container().style.cursor = "crosshair";
-              }}
+              onMouseEnter={() => setHoveredBondId(bond.id)}
+              onMouseLeave={() => setHoveredBondId(null)}
             />
           );
         })}
