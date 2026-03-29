@@ -3,6 +3,7 @@ import { Group, Circle, Text } from "react-konva";
 import { CustomHex, HEX_RADIUS, gridInstance } from "../utils/grid";
 import type { Atom } from "../types/molecule";
 import { useMoleculeStore } from "../store/useMoleculeStore";
+import { ELEMENT_DATA } from "../utils/elements";
 
 interface AtomNodeProps {
   atom: Atom;
@@ -10,20 +11,23 @@ interface AtomNodeProps {
 
 // O memo impede que os átomos parados percam FPS quando você arrasta um vizinho
 export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
-  const updateAtomPosition = useMoleculeStore(
-    (state) => state.updateAtomPosition,
-  );
-  const selectAtom = useMoleculeStore((state) => state.selectAtom);
-  const removeAtom = useMoleculeStore((state) => state.removeAtom); // Importar ação
-  const activePaletteElement = useMoleculeStore(
-    (state) => state.activePaletteElement,
-  );
+  const {
+    updateAtomPosition,
+    selectAtom,
+    removeAtom,
+    modifyAtomCharge,
+    activePaletteElement,
+    selectedAtomId,
+  } = useMoleculeStore();
   const isSelected = useMoleculeStore(
     (state) => state.selectedAtomId === atom.id,
   );
 
   // A posição visual é 100% amarrada à lógica do Zustand
   const hex = new CustomHex({ q: atom.gridPosition.q, r: atom.gridPosition.r });
+
+  const visualData = ELEMENT_DATA[atom.element] || ELEMENT_DATA.DEFAULT;
+  const atomRadius = HEX_RADIUS * 0.6 * visualData.radiusScale;
 
   const handleDragEnd = (e: any) => {
     const dropX = e.target.x();
@@ -58,9 +62,21 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
   const handleClick = () => {
     if (activePaletteElement === "ERASER") {
       removeAtom(atom.id);
+    } else if (activePaletteElement === "CHARGE_PLUS") {
+      modifyAtomCharge(atom.id, 1);
+    } else if (activePaletteElement === "CHARGE_MINUS") {
+      modifyAtomCharge(atom.id, -1);
     } else {
       selectAtom(atom.id);
     }
+  };
+
+  // Formatar a string da carga (ex: 1 -> "+", -1 -> "-", 2 -> "+2")
+  const formatCharge = (charge: number) => {
+    if (charge === 0) return "";
+    if (charge === 1) return "+";
+    if (charge === -1) return "-";
+    return charge > 0 ? `+${charge}` : `${charge}`;
   };
 
   return (
@@ -69,39 +85,58 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
       y={hex.y}
       draggable
       onDragEnd={handleDragEnd}
-      onMouseEnter={(e) => {
-        const container = e.target.getStage()?.container();
-        if (container) container.style.cursor = "grab";
-      }}
-      onMouseLeave={(e) => {
-        const container = e.target.getStage()?.container();
-        if (container) container.style.cursor = "default";
-      }}
       onClick={handleClick}
     >
-      <Circle
-        radius={HEX_RADIUS * 0.6}
-        fill={atom.element === "Fe" ? "#4A90E2" : "#2ecc71"}
-        stroke={isSelected ? "#f1c40f" : "#ffffff"}
-        strokeWidth={2}
-        perfectDrawEnabled={false} // Desliga cálculos caros de borda durante o arraste
-        transformsEnabled="position" // Diz ao Konva para não calcular rotação ou escala neste círculo
-        opacity={activePaletteElement === "ERASER" ? 0.8 : 1}
-      />
+      {/* Sombra/Glow de seleção */}
+      {isSelected && (
+        <Circle
+          radius={atomRadius + 4}
+          fill="transparent"
+          stroke="#f1c40f"
+          strokeWidth={3}
+          opacity={0.8}
+        />
+      )}
 
-      <Text
-        text={atom.element}
-        fontSize={20}
-        fontFamily="sans-serif"
-        fontStyle="bold"
-        fill="white"
-        align="center"
-        verticalAlign="middle"
-        offsetX={12}
-        offsetY={10}
-        listening={false}
+      {/* Corpo do Átomo */}
+      <Circle
+        radius={atomRadius}
+        fill={visualData.color}
+        stroke="#ffffff"
+        strokeWidth={1.5}
         perfectDrawEnabled={false}
       />
+
+      {/* Símbolo do Elemento */}
+      <Text
+        text={atom.element}
+        fontSize={18 * visualData.radiusScale} // Escalar a fonte junto com o átomo
+        fontFamily="sans-serif"
+        fontStyle="bold"
+        fill={visualData.textColor}
+        align="center"
+        verticalAlign="middle"
+        offsetX={9 * visualData.radiusScale}
+        offsetY={9 * visualData.radiusScale}
+        listening={false}
+      />
+
+      {/* Bolha de Carga Formal (renderizada apenas se a carga for diferente de 0) */}
+      {atom.charge !== 0 && (
+        <Group x={atomRadius * 0.7} y={-atomRadius * 0.7} listening={false}>
+          <Circle radius={10} fill="#ffffff" stroke="#333333" strokeWidth={1} />
+          <Text
+            text={formatCharge(atom.charge)}
+            fontSize={12}
+            fontStyle="bold"
+            fill="#333333"
+            align="center"
+            verticalAlign="middle"
+            offsetX={formatCharge(atom.charge).length > 1 ? 6 : 4} // Ajustar centro baseado no tamanho do texto
+            offsetY={6}
+          />
+        </Group>
+      )}
     </Group>
   );
 });

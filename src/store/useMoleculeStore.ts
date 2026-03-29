@@ -17,6 +17,7 @@ interface MoleculeState {
   removeAtom: (id: string) => void;
   cycleBondOrder: (bondId: string) => void;
   removeBond: (id: string) => void;
+  modifyAtomCharge: (id: string, delta: number) => void;
 }
 
 const isOccupied = (atoms: Record<string, Atom>, q: number, r: number) => {
@@ -156,4 +157,20 @@ export const useMoleculeStore = create<MoleculeState>((set, get) => ({
     set((state) => ({
       bonds: state.bonds.filter((bond) => bond.id !== id),
     })),
+
+  modifyAtomCharge: (id, delta) =>
+    set((state) => {
+      const atom = state.atoms[id];
+      if (!atom) return state;
+
+      // Atualiza a carga (ex: se era 0 e delta é 1, passa a +1)
+      const newCharge = atom.charge + delta;
+
+      return {
+        atoms: {
+          ...state.atoms,
+          [id]: { ...atom, charge: newCharge },
+        },
+      };
+    }),
 }));
