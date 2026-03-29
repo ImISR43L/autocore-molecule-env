@@ -30,6 +30,7 @@ interface MoleculeState {
   setMode: (mode: BuilderMode) => void;
   addOrganicConnection: (
     sourceId: string | null,
+    targetId: string | null,
     startX: number,
     startY: number,
     endX: number,
@@ -235,50 +236,61 @@ export const useMoleculeStore = create<MoleculeState>((set) => ({
 
   toggleGrid: () => set((state) => ({ isGridVisible: !state.isGridVisible })),
 
-  addOrganicConnection: (sourceId, startX, startY, endX, endY) =>
+  addOrganicConnection: (sourceId, targetId, startX, startY, endX, endY) =>
     set((state) => {
       const newAtoms = { ...state.atoms };
       const newBonds = [...state.bonds];
 
-      // Gerador de IDs únicos
       const genId = () =>
         `atom_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       const bondId = `bond_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
       let actualSourceId = sourceId;
-
-      // Se não clicou num átomo existente, criamos o primeiro Carbono no ponto inicial
       if (!actualSourceId) {
         actualSourceId = genId();
         newAtoms[actualSourceId] = {
           id: actualSourceId,
-          element: "C", // Orgânica é baseada em Carbono por defeito
+          element: "C",
           charge: 0,
-          gridPosition: { q: 0, r: 0 }, // Ignorado no orgânico
+          gridPosition: { q: 0, r: 0 },
           x: startX,
           y: startY,
         };
       }
 
-      // Criamos o segundo Carbono no ponto final (onde o rato soltou)
-      const targetId = genId();
-      newAtoms[targetId] = {
-        id: targetId,
-        element: "C",
-        charge: 0,
-        gridPosition: { q: 0, r: 0 },
-        x: endX,
-        y: endY,
-      };
+      // CORREÇÃO: Se não houver targetId, criamos um novo. Se houver, usamos o existente!
+      let actualTargetId = targetId;
+      if (!actualTargetId) {
+        actualTargetId = genId();
+        newAtoms[actualTargetId] = {
+          id: actualTargetId,
+          element: "C",
+          charge: 0,
+          gridPosition: { q: 0, r: 0 },
+          x: endX,
+          y: endY,
+        };
+      }
 
-      // Ligamos os dois
-      newBonds.push({
-        id: bondId,
-        sourceId: actualSourceId,
-        targetId: targetId,
-        order: 1, // Ligação simples por defeito
-        stereo: StereoType.NONE,
-      });
+      // Previne que o utilizador ligue o átomo a ele mesmo
+      if (actualSourceId === actualTargetId) return state;
+
+      // Previne a criação de ligações duplicadas se o ciclo já estiver fechado
+      const bondExists = newBonds.some(
+        (b) =>
+          (b.sourceId === actualSourceId && b.targetId === actualTargetId) ||
+          (b.sourceId === actualTargetId && b.targetId === actualSourceId),
+      );
+
+      if (!bondExists) {
+        newBonds.push({
+          id: bondId,
+          sourceId: actualSourceId,
+          targetId: actualTargetId,
+          order: 1,
+          stereo: StereoType.NONE, // ou 'none' se ainda não importou o Enum
+        });
+      }
 
       return { atoms: newAtoms, bonds: newBonds };
     }),

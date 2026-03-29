@@ -21,6 +21,7 @@ export const OrganicCanvas: React.FC = () => {
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [endPos, setEndPos] = useState({ x: 0, y: 0 });
   const [hoveredAtomId, setHoveredAtomId] = useState<string | null>(null);
+  const [dragSourceId, setDragSourceId] = useState<string | null>(null);
   const activePaletteElement = useMoleculeStore(
     (state) => state.activePaletteElement,
   );
@@ -39,12 +40,11 @@ export const OrganicCanvas: React.FC = () => {
   };
 
   const handleMouseDown = (e: any) => {
-    // Para evitar clicar em ferramentas ou outras coisas do Stage
+    // Evita conflitos com outros elementos de UI
     if (e.target.name() === "UI_ELEMENT") return;
 
     const pos = e.target.getStage().getPointerPosition();
 
-    // NOVO: Se a ferramenta for um Anel, desenha o polígono e aborta o zigue-zague
     if (activePaletteElement && activePaletteElement.startsWith("RING_")) {
       addOrganicRing(pos.x, pos.y, activePaletteElement);
       return;
@@ -52,12 +52,13 @@ export const OrganicCanvas: React.FC = () => {
 
     setIsDrawing(true);
 
-    // Se clicou num átomo, o ponto inicial é o centro dele. Se não, é onde o rato está.
     if (hoveredAtomId && atoms[hoveredAtomId]) {
       const atom = atoms[hoveredAtomId];
       setStartPos({ x: atom.x!, y: atom.y! });
+      setDragSourceId(atom.id); // SALVA O ÁTOMO DE ORIGEM
     } else {
       setStartPos(pos);
+      setDragSourceId(null);
     }
     setEndPos(pos);
   };
@@ -66,36 +67,72 @@ export const OrganicCanvas: React.FC = () => {
     if (!isDrawing) return;
     const pos = e.target.getStage().getPointerPosition();
 
-    // MATEMÁTICA QUÍMICA: Calcula o ângulo entre o início e o rato
-    const dx = pos.x - startPos.x;
-    const dy = pos.y - startPos.y;
-    const angle = Math.atan2(dy, dx);
+    // NOVA FÍSICA: O Ímã de fechamento de ciclo!
+    let snappedToAtom = false;
 
-    // SNAP: Trava o ângulo a cada 30 graus (PI / 6 radianos)
-    const snapAngle = Math.round(angle / (Math.PI / 6)) * (Math.PI / 6);
+    for (const atom of Object.values(atoms)) {
+      if (atom.id === dragSourceId) continue; // Não tenta grudar no átomo de onde saiu
 
-    // Fixa o comprimento da ligação (BOND_LENGTH)
-    const finalX = startPos.x + Math.cos(snapAngle) * BOND_LENGTH;
-    const finalY = startPos.y + Math.sin(snapAngle) * BOND_LENGTH;
+      if (atom.x !== undefined && atom.y !== undefined) {
+        // Calcula a distância do PONTEIRO DO RATO (pos) até o átomo
+        const distToAtom = Math.hypot(atom.x - pos.x, atom.y - pos.y);
 
-    setEndPos({ x: finalX, y: finalY });
+        // Se o rato chegar a menos de 25 píxeis de um átomo existente...
+        if (distToAtom < 25) {
+          setEndPos({ x: atom.x, y: atom.y }); // ...quebra as regras e gruda nele!
+          snappedToAtom = true;
+          break;
+        }
+      }
+    }
+
+    // Se não ativou o ímã, usa a física normal (zigue-zague com 30º e 50px)
+    if (!snappedToAtom) {
+      const dx = pos.x - startPos.x;
+      const dy = pos.y - startPos.y;
+      const angle = Math.atan2(dy, dx);
+      const snapAngle = Math.round(angle / (Math.PI / 6)) * (Math.PI / 6);
+
+      const finalX = startPos.x + Math.cos(snapAngle) * BOND_LENGTH;
+      const finalY = startPos.y + Math.sin(snapAngle) * BOND_LENGTH;
+      setEndPos({ x: finalX, y: finalY });
+    }
   };
 
   const handleMouseUp = () => {
     if (!isDrawing) return;
     setIsDrawing(false);
 
-    // Evita criar ligações se o utilizador apenas clicou sem arrastar quase nada
     const dist = Math.hypot(endPos.x - startPos.x, endPos.y - startPos.y);
     if (dist > 10) {
+      let targetAtomId: string | null = null;
+
+      for (const atom of Object.values(atoms)) {
+        if (atom.id === dragSourceId) continue;
+        if (atom.x !== undefined && atom.y !== undefined) {
+          // Como o MouseMove já grudou o endPos em cima do átomo, a distância será 0!
+          const distanceToAtom = Math.hypot(
+            atom.x - endPos.x,
+            atom.y - endPos.y,
+          );
+          if (distanceToAtom < 5) {
+            targetAtomId = atom.id;
+            break;
+          }
+        }
+      }
+
       addOrganicConnection(
-        hoveredAtomId,
+        dragSourceId,
+        targetAtomId,
         startPos.x,
         startPos.y,
         endPos.x,
         endPos.y,
       );
     }
+
+    setDragSourceId(null); // Limpa o estado
   };
 
   return (
@@ -118,6 +155,8 @@ export const OrganicCanvas: React.FC = () => {
           const t = atoms[bond.targetId];
 
           if (
+            !s ||
+            !t ||
             s.x === undefined ||
             s.y === undefined ||
             t.x === undefined ||
