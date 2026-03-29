@@ -38,7 +38,18 @@ interface MoleculeState {
   ) => void;
   modifyOrganicBond: (bondId: string, tool: string) => void;
   modifyOrganicAtom: (atomId: string, element: string) => void;
-  addOrganicRing: (centerX: number, centerY: number, ringType: string) => void;
+  addOrganicRing: (
+    centerX: number,
+    centerY: number,
+    ringType: string,
+    anchorAtomId?: string | null,
+  ) => void;
+  addFusedRing: (
+    bondId: string,
+    ringType: string,
+    clickX: number,
+    clickY: number,
+  ) => void;
 }
 
 const isOccupied = (atoms: Record<string, Atom>, q: number, r: number) => {
@@ -349,31 +360,83 @@ export const useMoleculeStore = create<MoleculeState>((set) => ({
       };
     }),
 
-  addOrganicRing: (centerX, centerY, ringType) =>
+  addOrganicRing: (centerX, centerY, ringType, anchorAtomId) =>
     set((state) => {
       const newAtoms = { ...state.atoms };
       const newBonds = [...state.bonds];
-
-      // Identifica o número de lados
       const n = ringType === "RING_CYCLOPENTANE" ? 5 : 6;
-
-      // Mantém o tamanho da ligação (lado do polígono) igual ao do desenho livre
       const BOND_LENGTH = 50;
-
-      // Calcula o raio perfeito para que o lado meça exatamente 50px
       const radius = BOND_LENGTH / (2 * Math.sin(Math.PI / n));
+
+      let Cx = centerX;
+      let Cy = centerY;
+      let startAngle = -Math.PI / 2; // Padrão: começa com a ponta para cima
+
+      // --- NOVA LÓGICA: CRESCIMENTO PARA FORA EM ÁTOMOS ---
+      if (anchorAtomId && state.atoms[anchorAtomId]) {
+        const anchor = state.atoms[anchorAtomId];
+
+        // 1. Encontra os vizinhos do átomo clicado
+        const neighbors = state.bonds
+          .filter(
+            (b) => b.sourceId === anchorAtomId || b.targetId === anchorAtomId,
+          )
+          .map((b) =>
+            b.sourceId === anchorAtomId
+              ? state.atoms[b.targetId]
+              : state.atoms[b.sourceId],
+          )
+          .filter((a) => a && a.x !== undefined && a.y !== undefined);
+
+        let dx = 0;
+        let dy = 1; // Se for um átomo solto, cresce para baixo por padrão
+
+        // 2. Calcula o centro de massa dos vizinhos para saber onde está o "corpo"
+        if (neighbors.length > 0) {
+          let avgX = 0;
+          let avgY = 0;
+          for (const neighbor of neighbors) {
+            avgX += neighbor.x!;
+            avgY += neighbor.y!;
+          }
+          avgX /= neighbors.length;
+          avgY /= neighbors.length;
+
+          // 3. O vetor aponta do corpo para o átomo (para fora da molécula!)
+          dx = anchor.x! - avgX;
+          dy = anchor.y! - avgY;
+
+          const len = Math.hypot(dx, dy);
+          if (len > 0.001) {
+            dx /= len;
+            dy /= len;
+          } else {
+            dx = 0;
+            dy = 1;
+          }
+        }
+
+        // 4. O centro do novo anel fica na direção "para fora"
+        Cx = anchor.x! + dx * radius;
+        Cy = anchor.y! + dy * radius;
+
+        // 5. O ângulo inicial é ajustado para que o primeiro vértice ligue perfeitamente no âncora
+        startAngle = Math.atan2(anchor.y! - Cy, anchor.x! - Cx);
+      }
+      // ---------------------------------------------------
 
       const ringAtomIds: string[] = [];
       const timestamp = Date.now();
 
-      // Passo A: Gerar os N átomos nas bordas do círculo
       for (let i = 0; i < n; i++) {
-        // Subtrair Math.PI / 2 (90 graus) garante que o anel comece "em pé" (ponta para cima)
-        const angle = i * ((2 * Math.PI) / n) - Math.PI / 2;
+        // O primeiro átomo gerado reaproveita o átomo clicado
+        if (i === 0 && anchorAtomId) {
+          ringAtomIds.push(anchorAtomId);
+          continue;
+        }
 
-        const atomX = centerX + radius * Math.cos(angle);
-        const atomY = centerY + radius * Math.sin(angle);
-
+        // Usa o ângulo inicial dinâmico e distribui os vértices
+        const angle = startAngle + i * ((2 * Math.PI) / n);
         const id = `atom_${timestamp}_ring_${i}`;
         ringAtomIds.push(id);
 
@@ -382,22 +445,16 @@ export const useMoleculeStore = create<MoleculeState>((set) => ({
           element: "C",
           charge: 0,
           gridPosition: { q: 0, r: 0 },
-          x: atomX,
-          y: atomY,
+          x: Cx + radius * Math.cos(angle),
+          y: Cy + radius * Math.sin(angle),
         };
       }
 
-      // Passo B: Ligar os pontos para formar o ciclo
       for (let i = 0; i < n; i++) {
         const sourceId = ringAtomIds[i];
-        // O último átomo liga de volta ao primeiro (i=0) graças ao operador módulo (%)
         const targetId = ringAtomIds[(i + 1) % n];
-
-        // Se for Benzeno, alterna entre ligação dupla (2) e simples (1)
         let order = 1;
-        if (ringType === "RING_BENZENE" && i % 2 === 0) {
-          order = 2;
-        }
+        if (ringType === "RING_BENZENE" && i % 2 === 0) order = 2;
 
         newBonds.push({
           id: `bond_${timestamp}_ring_${i}`,
@@ -406,6 +463,158 @@ export const useMoleculeStore = create<MoleculeState>((set) => ({
           order: order as BondOrder,
           stereo: StereoType.NONE,
         });
+      }
+
+      return { atoms: newAtoms, bonds: newBonds };
+    }),
+
+  addFusedRing: (bondId, ringType, clickX, clickY) =>
+    set((state) => {
+      const bond = state.bonds.find((b) => b.id === bondId);
+      if (!bond) return state;
+
+      const atomA = state.atoms[bond.sourceId];
+      const atomB = state.atoms[bond.targetId];
+      if (
+        !atomA ||
+        !atomB ||
+        atomA.x === undefined ||
+        atomB.x === undefined ||
+        atomA.y === undefined ||
+        atomB.y === undefined
+      )
+        return state;
+
+      const n = ringType === "RING_CYCLOPENTANE" ? 5 : 6;
+      const dx = atomB.x - atomA.x;
+      const dy = atomB.y - atomA.y;
+      const L = Math.hypot(dx, dy); // Comprimento real da ligação clicada
+
+      // 1. Ponto Médio da Ligação
+      const Mx = atomA.x + dx / 2;
+      const My = atomA.y + dy / 2;
+
+      // 2. Vetor Normal (perpendicular à ligação)
+      const nx = -dy / L;
+      const ny = dx / L;
+
+      // 3. Matemática do Polígono Regular
+      const a = L / 2 / Math.tan(Math.PI / n); // Apótema (distância do centro ao meio da aresta)
+      const R = L / (2 * Math.sin(Math.PI / n)); // Raio (distância do centro aos vértices)
+
+      // 4. Os Dois Centros Possíveis
+      const C1 = { x: Mx + nx * a, y: My + ny * a };
+      const C2 = { x: Mx - nx * a, y: My - ny * a };
+
+      // 5. Descobre qual centro está mais "livre" (aponta para fora)
+      let minDist1 = Infinity;
+      let minDist2 = Infinity;
+
+      const otherAtoms = Object.values(state.atoms).filter(
+        (a) => a.id !== atomA.id && a.id !== atomB.id && a.x !== undefined,
+      );
+
+      if (otherAtoms.length > 0) {
+        // Mede a distância para o resto da molécula
+        for (const a of otherAtoms) {
+          const d1 = Math.hypot(a.x! - C1.x, a.y! - C1.y);
+          const d2 = Math.hypot(a.x! - C2.x, a.y! - C2.y);
+          if (d1 < minDist1) minDist1 = d1;
+          if (d2 < minDist2) minDist2 = d2;
+        }
+      } else {
+        // Se for o primeiro anel solto, cresce para o lado onde o utilizador clicou
+        minDist1 = -Math.hypot(clickX - C1.x, clickY - C1.y);
+        minDist2 = -Math.hypot(clickX - C2.x, clickY - C2.y);
+      }
+
+      // Escolhe o centro que está mais longe do resto da molécula (ou mais perto do clique)
+      const C = minDist1 > minDist2 ? C1 : C2;
+
+      // 6. Gera os vértices em torno do centro escolhido
+      const newAtoms = { ...state.atoms };
+      const newBonds = [...state.bonds];
+      const ringAtomIds: string[] = [];
+      const timestamp = Date.now();
+
+      // O ângulo do centro para o ponto médio da ligação base
+      const baseAngle = Math.atan2(My - C.y, Mx - C.x);
+
+      for (let i = 0; i < n; i++) {
+        // A matemática garante que i=0 e i=1 vão bater exatamente em cima do atomA e atomB
+        const angle = baseAngle - Math.PI / n + i * ((2 * Math.PI) / n);
+        let px = C.x + R * Math.cos(angle);
+        let py = C.y + R * Math.sin(angle);
+
+        let snappedId = null;
+
+        // Verifica estritamente A e B primeiro para evitar erros de floating point
+        if (Math.hypot(px - atomA.x, py - atomA.y) < 10) {
+          snappedId = atomA.id;
+        } else if (Math.hypot(px - atomB.x, py - atomB.y) < 10) {
+          snappedId = atomB.id;
+        } else {
+          // Verifica outros átomos para fundir múltiplos anéis ao mesmo tempo (ex: Coroneno)
+          for (const existingAtom of Object.values(newAtoms)) {
+            if (existingAtom.x !== undefined && existingAtom.y !== undefined) {
+              if (Math.hypot(existingAtom.x - px, existingAtom.y - py) < 15) {
+                snappedId = existingAtom.id;
+                break;
+              }
+            }
+          }
+        }
+
+        if (snappedId) {
+          ringAtomIds.push(snappedId);
+        } else {
+          const newId = `atom_${timestamp}_fused_${i}`;
+          newAtoms[newId] = {
+            id: newId,
+            element: "C",
+            charge: 0,
+            gridPosition: { q: 0, r: 0 },
+            x: px,
+            y: py,
+          };
+          ringAtomIds.push(newId);
+        }
+      }
+
+      // 7. Liga os vértices
+      for (let i = 0; i < n; i++) {
+        const id1 = ringAtomIds[i];
+        const id2 = ringAtomIds[(i + 1) % n];
+
+        // Ignora a ligação base que partilhamos
+        if (
+          (id1 === atomA.id && id2 === atomB.id) ||
+          (id1 === atomB.id && id2 === atomA.id)
+        ) {
+          continue;
+        }
+
+        const bondExists = newBonds.some(
+          (b) =>
+            (b.sourceId === id1 && b.targetId === id2) ||
+            (b.sourceId === id2 && b.targetId === id1),
+        );
+
+        if (!bondExists) {
+          let order = 1;
+          // Alterna ligações duplas no Benzeno
+          if (ringType === "RING_BENZENE") {
+            order = i % 2 === 0 ? 2 : 1;
+          }
+
+          newBonds.push({
+            id: `bond_${timestamp}_fused_${i}`,
+            sourceId: id1,
+            targetId: id2,
+            order: order as BondOrder,
+            stereo: StereoType.NONE,
+          });
+        }
       }
 
       return { atoms: newAtoms, bonds: newBonds };

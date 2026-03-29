@@ -1,6 +1,6 @@
 // src/canvas/OrganicCanvas.tsx
 import React, { useState } from "react";
-import { Stage, Layer, Line, Circle, Group, Text } from "react-konva";
+import { Stage, Layer, Line, Circle, Text } from "react-konva";
 import { useMoleculeStore } from "../store/useMoleculeStore";
 import { ELEMENT_DATA } from "../utils/elements";
 
@@ -21,6 +21,7 @@ export const OrganicCanvas: React.FC = () => {
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [endPos, setEndPos] = useState({ x: 0, y: 0 });
   const [hoveredAtomId, setHoveredAtomId] = useState<string | null>(null);
+  const [hoveredBondId, setHoveredBondId] = useState<string | null>(null);
   const [dragSourceId, setDragSourceId] = useState<string | null>(null);
   const activePaletteElement = useMoleculeStore(
     (state) => state.activePaletteElement,
@@ -32,6 +33,7 @@ export const OrganicCanvas: React.FC = () => {
     (state) => state.modifyOrganicAtom,
   ); // NOVO
   const addOrganicRing = useMoleculeStore((state) => state.addOrganicRing);
+  const addFusedRing = useMoleculeStore((state) => state.addFusedRing);
   const removeAtom = useMoleculeStore((state) => state.removeAtom); // Já existia, vamos puxá-lo
 
   const isElementTool = (tool: string | null) => {
@@ -46,7 +48,13 @@ export const OrganicCanvas: React.FC = () => {
     const pos = e.target.getStage().getPointerPosition();
 
     if (activePaletteElement && activePaletteElement.startsWith("RING_")) {
-      addOrganicRing(pos.x, pos.y, activePaletteElement);
+      if (hoveredAtomId && atoms[hoveredAtomId]) {
+        // Ancorar o anel a um átomo existente (ex: tolueno)
+        addOrganicRing(pos.x, pos.y, activePaletteElement, hoveredAtomId);
+      } else {
+        // Estampar um anel solto no vazio
+        addOrganicRing(pos.x, pos.y, activePaletteElement);
+      }
       return;
     }
 
@@ -169,16 +177,29 @@ export const OrganicCanvas: React.FC = () => {
           let strokeWidth = 3;
           let dash: number[] | undefined = undefined;
 
-          if (bond.order === 2) strokeWidth = 7; // Mais grossa para simular dupla
-          if (bond.order === 3) strokeWidth = 11; // Muito grossa para tripla
+          if (bond.order === 2) strokeWidth = 7;
+          if (bond.order === 3) strokeWidth = 11;
 
           if (bond.stereo === "wedge") {
-            strokeColor = "#27ae60"; // Verde para cunha (frente)
+            strokeColor = "#27ae60";
             strokeWidth = 6;
           } else if (bond.stereo === "dash") {
-            strokeColor = "#c0392b"; // Vermelho para traço (trás)
-            dash = [4, 4]; // Tracejado
+            strokeColor = "#c0392b";
+            dash = [4, 4];
           }
+
+          // --- NOVO: LÓGICA DE DESTAQUE INTERATIVO (HOVER) ---
+          if (hoveredBondId === bond.id && activePaletteElement) {
+            if (activePaletteElement.startsWith("RING_")) {
+              strokeColor = "#f39c12"; // Laranja: Indica que vai fundir um anel aqui
+              strokeWidth += 2;
+            } else if (activePaletteElement === "ERASER") {
+              strokeColor = "#e74c3c"; // Vermelho: Indica que vai apagar
+            } else if (activePaletteElement.startsWith("BOND_")) {
+              strokeColor = "#3498db"; // Azul: Indica que vai alterar a ligação
+            }
+          }
+          // --------------------------------------------------
 
           return (
             <Line
@@ -188,19 +209,32 @@ export const OrganicCanvas: React.FC = () => {
               strokeWidth={strokeWidth}
               dash={dash}
               lineCap="round"
-              hitStrokeWidth={15} // Aumenta a área de clique invisível da linha para facilitar
+              hitStrokeWidth={15}
               onMouseDown={(e) => {
-                // Impede que o clique na linha crie uma nova ligação no fundo da tela
                 e.cancelBubble = true;
-                if (activePaletteElement) {
+                if (
+                  activePaletteElement &&
+                  activePaletteElement.startsWith("RING_")
+                ) {
+                  const stage = e.target.getStage();
+                  if (!stage) return;
+                  const pos = stage.getPointerPosition();
+                  if (!pos) return;
+
+                  addFusedRing(bond.id, activePaletteElement, pos.x, pos.y);
+                } else if (activePaletteElement) {
                   modifyOrganicBond(bond.id, activePaletteElement);
                 }
               }}
+              // --- NOVO: Atualizamos os eventos para ativar o Hover ---
               onMouseEnter={(e) => {
+                setHoveredBondId(bond.id);
                 const stage = e.target.getStage();
-                if (stage) stage.container().style.cursor = "pointer";
+                if (stage && activePaletteElement)
+                  stage.container().style.cursor = "pointer";
               }}
               onMouseLeave={(e) => {
+                setHoveredBondId(null);
                 const stage = e.target.getStage();
                 if (stage) stage.container().style.cursor = "crosshair";
               }}
@@ -210,72 +244,84 @@ export const OrganicCanvas: React.FC = () => {
 
         {/* Renderiza os Vértices (Átomos) Salvos */}
         {Object.values(atoms)
-          .filter((a) => a.x !== undefined && a.y !== undefined)
-          .map((atom) => {
-            const isHeteroatom = atom.element !== "C";
-            const color = ELEMENT_DATA[atom.element]?.color || "#2c3e50";
+          .filter(
+            (a) => a.x !== undefined && a.y !== undefined && a.element !== "C",
+          )
+          .map((atom) => (
+            <Circle
+              key={`bg_${atom.id}`}
+              x={atom.x!}
+              y={atom.y!}
+              radius={14}
+              fill="#ecf0f1" // Cor exata do fundo do Canvas para esconder a linha
+              listening={false}
+            />
+          ))}
 
+        {/* 2. TEXTOS DOS HETEROÁTOMOS */}
+        {/* Desenhados depois, garantindo que NENHUM fundo cobre NENHUMA letra */}
+        {Object.values(atoms)
+          .filter(
+            (a) => a.x !== undefined && a.y !== undefined && a.element !== "C",
+          )
+          .map((atom) => {
+            const color = ELEMENT_DATA[atom.element]?.color || "#2c3e50";
             return (
-              <Group
-                key={atom.id}
+              <Text
+                key={`text_${atom.id}`}
                 x={atom.x!}
                 y={atom.y!}
-                onMouseDown={(e) => {
-                  if (activePaletteElement === "ERASER") {
-                    // Borracha apaga o átomo e as ligações a ele
-                    e.cancelBubble = true;
-                    removeAtom(atom.id);
-                  } else if (isElementTool(activePaletteElement)) {
-                    // Transforma o vértice no heteroátomo selecionado
-                    e.cancelBubble = true;
-                    modifyOrganicAtom(atom.id, activePaletteElement!);
-                  }
-                  // IMPORTANTE: Se não for Borracha nem Átomo (ou seja, se for uma ferramenta de ligação),
-                  // deixamos o evento "borbulhar" para o Stage começar a desenhar uma linha a partir daqui!
-                }}
-                onMouseEnter={(e) => {
-                  setHoveredAtomId(atom.id);
-                  const stage = e.target.getStage();
-                  if (
-                    stage &&
-                    (isElementTool(activePaletteElement) ||
-                      activePaletteElement === "ERASER")
-                  ) {
-                    stage.container().style.cursor = "pointer";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  setHoveredAtomId(null);
-                  const stage = e.target.getStage();
-                  if (stage) stage.container().style.cursor = "crosshair";
-                }}
-              >
-                {/* 1. FUNDO PROTETOR (Apenas se for heteroátomo) */}
-                {/* Esconde as linhas das ligações que passam por baixo do texto */}
-                {isHeteroatom && (
-                  <Circle radius={14} fill="#ecf0f1" listening={false} />
-                )}
-
-                {/* 2. TEXTO DO ELEMENTO (Ex: "O", "NH2", "Cl") */}
-                {isHeteroatom && (
-                  <Text
-                    text={atom.element}
-                    fontSize={18}
-                    fontStyle="bold"
-                    fill={color}
-                    listening={false}
-                    offsetX={atom.element.length > 1 ? 10 : 6} // Centraliza um pouco melhor se tiver mais letras
-                    offsetY={8}
-                  />
-                )}
-
-                {/* 3. ÁREA DE CLIQUE INVISÍVEL */}
-                <Circle radius={15} fill="transparent" />
-              </Group>
+                text={atom.element}
+                fontSize={18}
+                fontStyle="bold"
+                fill={color}
+                listening={false}
+                offsetX={atom.element.length > 1 ? 10 : 6}
+                offsetY={8}
+              />
             );
           })}
 
-        {/* Renderiza a Linha Fantasma sendo arrastada */}
+        {/* 3. ÁREAS DE CLIQUE INVISÍVEIS (Hitboxes) */}
+        {/* Ficam na frente de tudo para capturar o rato com perfeição */}
+        {Object.values(atoms)
+          .filter((a) => a.x !== undefined && a.y !== undefined)
+          .map((atom) => (
+            <Circle
+              key={`hit_${atom.id}`}
+              x={atom.x!}
+              y={atom.y!}
+              radius={15}
+              fill="transparent"
+              onMouseDown={(e) => {
+                if (activePaletteElement === "ERASER") {
+                  e.cancelBubble = true;
+                  removeAtom(atom.id);
+                } else if (isElementTool(activePaletteElement)) {
+                  e.cancelBubble = true;
+                  modifyOrganicAtom(atom.id, activePaletteElement!);
+                }
+              }}
+              onMouseEnter={(e) => {
+                setHoveredAtomId(atom.id);
+                const stage = e.target.getStage();
+                if (
+                  stage &&
+                  (isElementTool(activePaletteElement) ||
+                    activePaletteElement === "ERASER")
+                ) {
+                  stage.container().style.cursor = "pointer";
+                }
+              }}
+              onMouseLeave={(e) => {
+                setHoveredAtomId(null);
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = "crosshair";
+              }}
+            />
+          ))}
+
+        {/* 4. RENDERIZA A LINHA FANTASMA E A BOLINHA DE HOVER (Mantenha o código que já tinha aqui) */}
         {isDrawing && (
           <Line
             points={[startPos.x, startPos.y, endPos.x, endPos.y]}
@@ -285,16 +331,16 @@ export const OrganicCanvas: React.FC = () => {
           />
         )}
 
-        {/* Destaque visual (bolinha azul) se o rato passar por cima de um vértice existente */}
         {hoveredAtomId &&
           !isDrawing &&
           atoms[hoveredAtomId]?.x !== undefined && (
             <Circle
-              // CORREÇÃO: Adicionamos o "!" aqui também
               x={atoms[hoveredAtomId].x!}
               y={atoms[hoveredAtomId].y!}
-              radius={6}
-              fill="#3498db"
+              // NOVO: Aumenta a bolinha se for adicionar um anel, senão mantém tamanho 6
+              radius={activePaletteElement?.startsWith("RING_") ? 10 : 6}
+              // NOVO: Fica vermelho se for apagar, azul para o resto
+              fill={activePaletteElement === "ERASER" ? "#e74c3c" : "#3498db"}
               opacity={0.6}
               listening={false}
             />
