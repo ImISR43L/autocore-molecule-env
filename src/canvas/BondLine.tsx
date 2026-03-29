@@ -8,24 +8,32 @@ import { useMoleculeStore } from "../store/useMoleculeStore";
 export const BondLine: React.FC<{ bond: Bond }> = ({ bond }) => {
   const sourceAtom = useMoleculeStore((state) => state.atoms[bond.sourceId]);
   const targetAtom = useMoleculeStore((state) => state.atoms[bond.targetId]);
-  const removeBond = useMoleculeStore((state) => state.removeBond);
   const cycleBondOrder = useMoleculeStore((state) => state.cycleBondOrder);
   const activePaletteElement = useMoleculeStore(
     (state) => state.activePaletteElement,
   );
+  const removeBond = useMoleculeStore((state) => state.removeBond);
+
+  // NOVO: Puxamos as posições de arrasto da store
+  const dragPositions = useMoleculeStore((state) => state.dragPositions);
 
   if (!sourceAtom || !targetAtom) return null;
 
-  const s = new CustomHex({
+  // 1. Calculamos onde deveria ser o centro baseado na grade
+  const sHex = new CustomHex({
     q: sourceAtom.gridPosition.q,
     r: sourceAtom.gridPosition.r,
   });
-  const t = new CustomHex({
+  const tHex = new CustomHex({
     q: targetAtom.gridPosition.q,
     r: targetAtom.gridPosition.r,
   });
 
-  // Cálculo do vetor normal para deslocamento lateral
+  // 2. CORREÇÃO: Verificamos se há uma posição de arrasto ativa. Se houver, usamos ela.
+  const s = dragPositions[sourceAtom.id] || { x: sHex.x, y: sHex.y };
+  const t = dragPositions[targetAtom.id] || { x: tHex.x, y: tHex.y };
+
+  // O resto da matemática continua exatamente igual!
   const dx = t.x - s.x;
   const dy = t.y - s.y;
   const dist = Math.sqrt(dx * dx + dy * dy);

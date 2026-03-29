@@ -25,21 +25,27 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
   // CORREÇÃO: Raio fixo para todos os átomos, sem escala
   const atomRadius = HEX_RADIUS * 0.6;
 
-  const handleDragEnd = (e: any) => {
-    // 1. Pega a posição em píxeis onde o mouse soltou
-    const dropPixelPos = { x: e.target.x(), y: e.target.y() };
+  const setAtomDragPosition = useMoleculeStore(
+    (state) => state.setAtomDragPosition,
+  ); // NOVO
 
-    // 2. Descobre qual é o hexágono lógico em baixo do mouse
+  const handleDragMove = (e: any) => {
+    setAtomDragPosition(atom.id, { x: e.target.x(), y: e.target.y() });
+  };
+
+  const handleDragEnd = (e: any) => {
+    const dropPixelPos = { x: e.target.x(), y: e.target.y() };
     const targetHex = gridInstance.pointToHex(dropPixelPos);
 
     if (targetHex) {
-      // 3. Atualiza a memória lógica (Zustand)
       updateAtomPosition(atom.id, targetHex.q, targetHex.r);
 
-      // CORREÇÃO: Força o elemento visual do Konva a pular (snap) para o centro exato
       const center = new CustomHex(targetHex);
       e.target.position({ x: center.x, y: center.y });
     }
+
+    // NOVO: Limpa a posição temporária de arrasto ao soltar o rato
+    setAtomDragPosition(atom.id, null);
   };
 
   const handleClick = () => {
@@ -65,6 +71,7 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
       draggable
       onDragEnd={handleDragEnd}
       onClick={handleClick}
+      onDragMove={handleDragMove}
     >
       {isSelected && (
         <Circle

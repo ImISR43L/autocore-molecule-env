@@ -8,6 +8,7 @@ interface MoleculeState {
   selectedAtomId: string | null;
   activePaletteElement: string | null; // <-- NOVO: Elemento selecionado na paleta
   isGridVisible: boolean;
+  dragPositions: Record<string, { x: number; y: number }>;
 
   // Ações
   setActiveElement: (element: string) => void; // <-- NOVO: Ação para selecionar na paleta
@@ -19,6 +20,10 @@ interface MoleculeState {
   removeBond: (id: string) => void;
   modifyAtomCharge: (id: string, delta: number) => void;
   toggleGrid: () => void;
+  setAtomDragPosition: (
+    id: string,
+    pos: { x: number; y: number } | null,
+  ) => void; // NOVO
 }
 
 const isOccupied = (atoms: Record<string, Atom>, q: number, r: number) => {
@@ -33,6 +38,7 @@ export const useMoleculeStore = create<MoleculeState>((set, get) => ({
   selectedAtomId: null,
   activePaletteElement: null, // Inicialmente nada selecionado
   isGridVisible: true,
+  dragPositions: {},
 
   // NOVO: Define qual elemento o utilizador quer desenhar
   setActiveElement: (element) =>
@@ -132,6 +138,17 @@ export const useMoleculeStore = create<MoleculeState>((set, get) => ({
         bonds: [...bonds, finalBond],
         selectedAtomId: null,
       };
+    }),
+
+  setAtomDragPosition: (id, pos) =>
+    set((state) => {
+      // Se pos for null, o arrasto terminou, então removemos o átomo do dicionário
+      if (pos === null) {
+        const { [id]: _, ...remainingDrags } = state.dragPositions;
+        return { dragPositions: remainingDrags };
+      }
+      // Caso contrário, atualizamos a posição em tempo real
+      return { dragPositions: { ...state.dragPositions, [id]: pos } };
     }),
 
   cycleBondOrder: (bondId) =>
