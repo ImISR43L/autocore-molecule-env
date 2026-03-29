@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { Atom, Bond, BondOrder, StereoType } from "../types/molecule";
 import { isChemistryValid } from "../engine/validation";
 
+export type BuilderMode = "INORGANIC" | "ORGANIC";
+
 interface MoleculeState {
   atoms: Record<string, Atom>;
   bonds: Bond[];
@@ -9,6 +11,7 @@ interface MoleculeState {
   activePaletteElement: string | null; // <-- NOVO: Elemento selecionado na paleta
   isGridVisible: boolean;
   dragPositions: Record<string, { x: number; y: number }>;
+  mode: BuilderMode; // NOVO
 
   // Ações
   setActiveElement: (element: string) => void; // <-- NOVO: Ação para selecionar na paleta
@@ -24,6 +27,16 @@ interface MoleculeState {
     id: string,
     pos: { x: number; y: number } | null,
   ) => void; // NOVO
+  setMode: (mode: BuilderMode) => void;
+  addOrganicConnection: (
+    sourceId: string | null,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+  ) => void;
+  modifyOrganicBond: (bondId: string, tool: string) => void;
+  modifyOrganicAtom: (atomId: string, element: string) => void;
 }
 
 const isOccupied = (atoms: Record<string, Atom>, q: number, r: number) => {
@@ -39,6 +52,9 @@ export const useMoleculeStore = create<MoleculeState>((set) => ({
   activePaletteElement: null, // Inicialmente nada selecionado
   isGridVisible: true,
   dragPositions: {},
+  mode: "INORGANIC",
+
+  setMode: (mode) => set({ mode }),
 
   // NOVO: Define qual elemento o utilizador quer desenhar
   setActiveElement: (element) =>
@@ -217,4 +233,106 @@ export const useMoleculeStore = create<MoleculeState>((set) => ({
     }),
 
   toggleGrid: () => set((state) => ({ isGridVisible: !state.isGridVisible })),
+
+  addOrganicConnection: (sourceId, startX, startY, endX, endY) =>
+    set((state) => {
+      const newAtoms = { ...state.atoms };
+      const newBonds = [...state.bonds];
+
+      // Gerador de IDs únicos
+      const genId = () =>
+        `atom_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      const bondId = `bond_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+      let actualSourceId = sourceId;
+
+      // Se não clicou num átomo existente, criamos o primeiro Carbono no ponto inicial
+      if (!actualSourceId) {
+        actualSourceId = genId();
+        newAtoms[actualSourceId] = {
+          id: actualSourceId,
+          element: "C", // Orgânica é baseada em Carbono por defeito
+          charge: 0,
+          gridPosition: { q: 0, r: 0 }, // Ignorado no orgânico
+          x: startX,
+          y: startY,
+        };
+      }
+
+      // Criamos o segundo Carbono no ponto final (onde o rato soltou)
+      const targetId = genId();
+      newAtoms[targetId] = {
+        id: targetId,
+        element: "C",
+        charge: 0,
+        gridPosition: { q: 0, r: 0 },
+        x: endX,
+        y: endY,
+      };
+
+      // Ligamos os dois
+      newBonds.push({
+        id: bondId,
+        sourceId: actualSourceId,
+        targetId: targetId,
+        order: 1, // Ligação simples por defeito
+        stereo: StereoType.NONE,
+      });
+
+      return { atoms: newAtoms, bonds: newBonds };
+    }),
+
+  modifyOrganicBond: (bondId, tool) =>
+    set((state) => {
+      const bondIndex = state.bonds.findIndex((b) => b.id === bondId);
+      if (bondIndex === -1) return state;
+
+      // Se a ferramenta for a Borracha, removemos a ligação
+      if (tool === "ERASER") {
+        return { bonds: state.bonds.filter((b) => b.id !== bondId) };
+      }
+
+      const updatedBonds = [...state.bonds];
+      const bond = { ...updatedBonds[bondIndex] };
+
+      // Aplica as propriedades corretas com base na ferramenta
+      switch (tool) {
+        case "BOND_SINGLE":
+          bond.order = 1;
+          bond.stereo = StereoType.NONE;
+          break;
+        case "BOND_DOUBLE":
+          bond.order = 2;
+          bond.stereo = StereoType.NONE;
+          break;
+        case "BOND_TRIPLE":
+          bond.order = 3;
+          bond.stereo = StereoType.NONE;
+          break;
+        case "BOND_WEDGE":
+          bond.order = 1;
+          bond.stereo = StereoType.WEDGE;
+          break;
+        case "BOND_DASH":
+          bond.order = 1;
+          bond.stereo = StereoType.DASH;
+          break;
+        default:
+          return state; // Se clicou com um átomo ou outra ferramenta, não faz nada
+      }
+
+      updatedBonds[bondIndex] = bond;
+      return { bonds: updatedBonds };
+    }),
+
+  modifyOrganicAtom: (id, element) =>
+    set((state) => {
+      const atom = state.atoms[id];
+      if (!atom) return state;
+
+      // Altera o elemento químico do vértice
+      return {
+        atoms: { ...state.atoms, [id]: { ...atom, element } },
+      };
+    }),
 }));

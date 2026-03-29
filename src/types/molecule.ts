@@ -33,11 +33,13 @@ export interface GridCoordinates {
  * Representação de um único átomo (Nó do Grafo).
  */
 export interface Atom {
-  id: string; // Identificador único (ex: "atom_1")
-  element: string; // Símbolo químico (ex: "Fe", "Cl", "Na")
-  gridPosition: GridCoordinates;
-  charge: number; // Carga formal para cálculos de iões (ex: +2, -1)
-  isotope?: number; // Opcional: massa isotópica específica
+  id: string;
+  element: string;
+  gridPosition: GridCoordinates; // Continua aqui para a inorgânica
+  x?: number; // NOVO: Posição X em píxeis para o modo orgânico
+  y?: number; // NOVO: Posição Y em píxeis para o modo orgânico
+  charge: number;
+  isotope?: number;
 }
 
 /**
