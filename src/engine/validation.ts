@@ -36,8 +36,10 @@ const generateMolBlock = (
 
   atomList.forEach((atom, index) => {
     if (atom.charge !== 0) {
-      // Formato: M  CHG  [num de entradas]  [indice do átomo]  [carga]
-      molBlock += `M  CHG  1 ${String(index + 1).padStart(3)} ${String(atom.charge).padStart(3)}\n`;
+      // O V2000 exige exatamente: "M  CHG  1" seguido pelo index (4 espaços) e a carga (4 espaços)
+      const idx = String(index + 1).padStart(4);
+      const chg = String(atom.charge).padStart(4);
+      molBlock += `M  CHG  1${idx}${chg}\n`;
     }
   });
 

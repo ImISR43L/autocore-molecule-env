@@ -63,3 +63,7 @@ export interface MoleculeGraph {
   // As ligações ficam num array simples para serem iteradas na renderização.
   bonds: Bond[];
 }
+
+export interface AtomNodeProps {
+  atom: Atom;
+}

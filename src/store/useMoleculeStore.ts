@@ -7,6 +7,7 @@ interface MoleculeState {
   bonds: Bond[];
   selectedAtomId: string | null;
   activePaletteElement: string | null; // <-- NOVO: Elemento selecionado na paleta
+  isGridVisible: boolean;
 
   // Ações
   setActiveElement: (element: string) => void; // <-- NOVO: Ação para selecionar na paleta
@@ -17,6 +18,7 @@ interface MoleculeState {
   cycleBondOrder: (bondId: string) => void;
   removeBond: (id: string) => void;
   modifyAtomCharge: (id: string, delta: number) => void;
+  toggleGrid: () => void;
 }
 
 const isOccupied = (atoms: Record<string, Atom>, q: number, r: number) => {
@@ -30,6 +32,7 @@ export const useMoleculeStore = create<MoleculeState>((set, get) => ({
   bonds: [],
   selectedAtomId: null,
   activePaletteElement: null, // Inicialmente nada selecionado
+  isGridVisible: true,
 
   // NOVO: Define qual elemento o utilizador quer desenhar
   setActiveElement: (element) =>
@@ -38,15 +41,16 @@ export const useMoleculeStore = create<MoleculeState>((set, get) => ({
         state.activePaletteElement === element ? null : element,
     })),
 
-  // NOVO: Adiciona o elemento ativo na posição clicada da grade
   addAtomToGrid: (q, r) =>
     set((state) => {
       const { activePaletteElement, atoms } = state;
 
-      // Se não houver elemento selecionado na paleta, ou a casa estiver ocupada, ignora
-      if (!activePaletteElement || isOccupied(atoms, q, r)) {
-        return state;
-      }
+      // Se não houver elemento, ou se a casa estiver ocupada, ignora
+      if (!activePaletteElement || isOccupied(atoms, q, r)) return state;
+
+      // CORREÇÃO: Impede que ferramentas sejam desenhadas como átomos
+      const tools = ["ERASER", "CHARGE_PLUS", "CHARGE_MINUS"];
+      if (tools.includes(activePaletteElement)) return state;
 
       const newId = `atom_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       const newAtom: Atom = {
@@ -58,8 +62,6 @@ export const useMoleculeStore = create<MoleculeState>((set, get) => ({
 
       return {
         atoms: { ...atoms, [newId]: newAtom },
-        // Opcional: Limpar a seleção da paleta após adicionar
-        activePaletteElement: null,
       };
     }),
 
@@ -166,24 +168,36 @@ export const useMoleculeStore = create<MoleculeState>((set, get) => ({
       const atom = state.atoms[id];
       if (!atom) return state;
 
-      const newCharge = atom.charge + delta;
+      let newCharge = atom.charge + delta;
 
-      // Criamos um estado temporário para testar
+      // 1. TRAVA LÓGICA: Limites do mundo real (Evita +50 ou -50)
+      // Para inorgânica, cargas de -4 a +4 cobrem 99% dos casos práticos
+      const MAX_CHARGE = 4;
+      const MIN_CHARGE = -4;
+
+      if (newCharge > MAX_CHARGE) newCharge = MAX_CHARGE;
+      if (newCharge < MIN_CHARGE) newCharge = MIN_CHARGE;
+
+      // Se o limite impediu a mudança de ocorrer, nem precisamos chamar o RDKit
+      if (newCharge === atom.charge) return state;
+
+      // 2. TRAVA ESTRUTURAL (RDKit)
       const updatedAtoms = {
         ...state.atoms,
         [id]: { ...atom, charge: newCharge },
       };
 
-      // Perguntamos ao RDKit se essa carga é quimicamente possível
       const validation = isChemistryValid(updatedAtoms, state.bonds);
 
       if (!validation.valid) {
-        // Se o RDKit rejeitar (ex: tentar colocar +2 num Nitrogênio com 4 ligações)
-        console.warn(`Carga rejeitada pelo RDKit: ${validation.error}`);
-        return state; // Aborta a mudança e mantém o estado anterior
+        console.warn(
+          `Carga estruturalmente rejeitada pelo RDKit: ${validation.error}`,
+        );
+        return state;
       }
 
-      // Se passou, aplicamos a mudança
       return { atoms: updatedAtoms };
     }),
+
+  toggleGrid: () => set((state) => ({ isGridVisible: !state.isGridVisible })),
 }));

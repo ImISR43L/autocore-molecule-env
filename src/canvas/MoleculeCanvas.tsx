@@ -19,6 +19,7 @@ export const MoleculeCanvas: React.FC = () => {
   const bonds = useMoleculeStore((state) => state.bonds);
   const activeElement = useMoleculeStore((state) => state.activePaletteElement); // Ler elemento ativo
   const addAtomToGrid = useMoleculeStore((state) => state.addAtomToGrid); // Ler ação de adicionar
+  const isGridVisible = useMoleculeStore((state) => state.isGridVisible);
 
   useEffect(() => {
     // CORREÇÃO: Subtraímos 80px no redimensionamento também
@@ -67,15 +68,16 @@ export const MoleculeCanvas: React.FC = () => {
 
       <Stage
         ref={stageRef}
-        width={dimensions.width} // Agora ele tem o tamanho exato do espaço restante
+        width={dimensions.width}
         height={dimensions.height}
         style={{
           cursor: activeElement ? "crosshair" : "grab",
-          marginLeft: "80px", // Empurra o canvas para a direita da paleta
+          marginLeft: "80px",
         }}
         onClick={handleStageClick}
       >
-        <GridLayer />
+        {/* SÓ RENDERIZA A GRADE SE ESTIVER ATIVA */}
+        {isGridVisible && <GridLayer />}
 
         <Layer>
           {bonds.map((bond) => (

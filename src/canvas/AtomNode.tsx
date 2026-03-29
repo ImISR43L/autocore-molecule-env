@@ -1,15 +1,11 @@
+// src/canvas/AtomNode.tsx
 import React from "react";
 import { Group, Circle, Text } from "react-konva";
 import { CustomHex, HEX_RADIUS, gridInstance } from "../utils/grid";
-import type { Atom } from "../types/molecule";
+import { AtomNodeProps } from "../types/molecule";
 import { useMoleculeStore } from "../store/useMoleculeStore";
 import { ELEMENT_DATA } from "../utils/elements";
 
-interface AtomNodeProps {
-  atom: Atom;
-}
-
-// O memo impede que os átomos parados percam FPS quando você arrasta um vizinho
 export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
   const {
     updateAtomPosition,
@@ -17,60 +13,44 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
     removeAtom,
     modifyAtomCharge,
     activePaletteElement,
+    selectedAtomId,
   } = useMoleculeStore();
-  const isSelected = useMoleculeStore(
-    (state) => state.selectedAtomId === atom.id,
-  );
 
-  // A posição visual é 100% amarrada à lógica do Zustand
+  const isSelected = selectedAtomId === atom.id;
   const hex = new CustomHex({ q: atom.gridPosition.q, r: atom.gridPosition.r });
 
+  // Pega a cor oficial ou o padrão se não existir
   const visualData = ELEMENT_DATA[atom.element] || ELEMENT_DATA.DEFAULT;
-  const atomRadius = HEX_RADIUS * 0.6 * visualData.radiusScale;
+
+  // CORREÇÃO: Raio fixo para todos os átomos, sem escala
+  const atomRadius = HEX_RADIUS * 0.6;
 
   const handleDragEnd = (e: any) => {
-    const dropX = e.target.x();
-    const dropY = e.target.y();
-    const targetHex = gridInstance.pointToHex({ x: dropX, y: dropY });
+    // 1. Pega a posição em píxeis onde o mouse soltou
+    const dropPixelPos = { x: e.target.x(), y: e.target.y() };
 
-    // Pega todos os átomos atuais para verificar colisão
-    const atoms = useMoleculeStore.getState().atoms;
+    // 2. Descobre qual é o hexágono lógico em baixo do mouse
+    const targetHex = gridInstance.pointToHex(dropPixelPos);
 
-    // Verifica se a casa de destino já tem um dono (ignorando a si mesmo)
-    const hasOverlap =
-      targetHex &&
-      Object.values(atoms).some(
-        (a) =>
-          a.id !== atom.id &&
-          a.gridPosition.q === targetHex.q &&
-          a.gridPosition.r === targetHex.r,
-      );
-
-    if (targetHex && !hasOverlap) {
-      // Movimento Válido!
-      e.target.x(targetHex.x);
-      e.target.y(targetHex.y);
+    if (targetHex) {
+      // 3. Atualiza a memória lógica (Zustand)
       updateAtomPosition(atom.id, targetHex.q, targetHex.r);
-    } else {
-      // Movimento Inválido (Ocupado ou Fora da tela). O átomo sofre um "Elástico" e volta.
-      e.target.x(hex.x);
-      e.target.y(hex.y);
+
+      // CORREÇÃO: Força o elemento visual do Konva a pular (snap) para o centro exato
+      const center = new CustomHex(targetHex);
+      e.target.position({ x: center.x, y: center.y });
     }
   };
 
   const handleClick = () => {
-    if (activePaletteElement === "ERASER") {
-      removeAtom(atom.id);
-    } else if (activePaletteElement === "CHARGE_PLUS") {
+    if (activePaletteElement === "ERASER") removeAtom(atom.id);
+    else if (activePaletteElement === "CHARGE_PLUS")
       modifyAtomCharge(atom.id, 1);
-    } else if (activePaletteElement === "CHARGE_MINUS") {
+    else if (activePaletteElement === "CHARGE_MINUS")
       modifyAtomCharge(atom.id, -1);
-    } else {
-      selectAtom(atom.id);
-    }
+    else selectAtom(atom.id);
   };
 
-  // Formatar a string da carga (ex: 1 -> "+", -1 -> "-", 2 -> "+2")
   const formatCharge = (charge: number) => {
     if (charge === 0) return "";
     if (charge === 1) return "+";
@@ -86,7 +66,6 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
       onDragEnd={handleDragEnd}
       onClick={handleClick}
     >
-      {/* Sombra/Glow de seleção */}
       {isSelected && (
         <Circle
           radius={atomRadius + 4}
@@ -97,7 +76,7 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
         />
       )}
 
-      {/* Corpo do Átomo */}
+      {/* Corpo do Átomo agora sempre com cor correta e mesmo tamanho */}
       <Circle
         radius={atomRadius}
         fill={visualData.color}
@@ -106,26 +85,22 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
         perfectDrawEnabled={false}
       />
 
-      {/* Símbolo do Elemento */}
+      {/* Texto perfeitamente centralizado sem depender da escala */}
       <Text
         text={atom.element}
-        fontSize={20 * visualData.radiusScale}
+        fontSize={20}
         fontFamily="sans-serif"
         fontStyle="bold"
         fill={visualData.textColor}
-        // CORREÇÃO: Definimos o tamanho da caixa igual ao diâmetro do átomo
         width={atomRadius * 2}
         height={atomRadius * 2}
-        // Movemos a caixa para começar no canto superior esquerdo do círculo
         x={-atomRadius}
         y={-atomRadius}
-        // Alinhamento horizontal e vertical automáticos do Konva
         align="center"
         verticalAlign="middle"
         listening={false}
       />
 
-      {/* Bolha de Carga Formal (renderizada apenas se a carga for diferente de 0) */}
       {atom.charge !== 0 && (
         <Group x={atomRadius * 0.7} y={-atomRadius * 0.7} listening={false}>
           <Circle radius={10} fill="#ffffff" stroke="#333333" strokeWidth={1} />
@@ -134,10 +109,12 @@ export const AtomNode: React.FC<AtomNodeProps> = React.memo(({ atom }) => {
             fontSize={12}
             fontStyle="bold"
             fill="#333333"
+            width={20}
+            height={20}
+            x={-10}
+            y={-10}
             align="center"
             verticalAlign="middle"
-            offsetX={formatCharge(atom.charge).length > 1 ? 6 : 4} // Ajustar centro baseado no tamanho do texto
-            offsetY={6}
           />
         </Group>
       )}
