@@ -1,7 +1,33 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { MoleculeCanvas } from "./canvas/MoleculeCanvas";
+import { initRDKit } from "./engine/rdkit";
 
 function App() {
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    // Inicializa o motor químico ao montar o componente
+    initRDKit().then(() => setIsReady(true));
+  }, []);
+
+  if (!isReady) {
+    return (
+      <div
+        style={{
+          width: "100vw",
+          height: "100vh",
+          backgroundColor: "#1e1e1e",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          color: "white",
+        }}
+      >
+        <h2>Carregando Motor Químico...</h2>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -11,7 +37,6 @@ function App() {
         overflow: "hidden",
       }}
     >
-      {/* Um pequeno cabeçalho sobreposto ao canvas */}
       <div
         style={{
           position: "absolute",
@@ -19,16 +44,12 @@ function App() {
           left: 20,
           zIndex: 10,
           color: "#ffffff",
-          fontFamily: "sans-serif",
         }}
       >
         <h2>Construtor Molecular Inorgânico</h2>
-        <p style={{ color: "#aaaaaa" }}>
-          Arraste o fundo para mover a área de trabalho.
-        </p>
+        <p style={{ color: "#aaaaaa" }}>RDKit.js Ativado 🧠</p>
       </div>
 
-      {/* O nosso motor gráfico entra aqui */}
       <MoleculeCanvas />
     </div>
   );

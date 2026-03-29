@@ -1,14 +1,19 @@
 import { create } from "zustand";
 import { Atom, Bond, BondOrder, StereoType } from "../types/molecule";
+import { isChemistryValid } from "../engine/validation";
+import { CustomHex, gridInstance } from "../utils/grid";
 
 interface MoleculeState {
   atoms: Record<string, Atom>;
   bonds: Bond[];
-  selectedAtomId: string | null; // Guarda o ID do átomo que o utilizador clicou primeiro
+  selectedAtomId: string | null;
+  activePaletteElement: string | null; // <-- NOVO: Elemento selecionado na paleta
 
-  addAtom: (element: string, q: number, r: number) => void;
+  // Ações
+  setActiveElement: (element: string) => void; // <-- NOVO: Ação para selecionar na paleta
+  addAtomToGrid: (q: number, r: number) => void; // <-- NOVO: Ação para clicar na grade e adicionar
   updateAtomPosition: (id: string, q: number, r: number) => void;
-  selectAtom: (id: string) => void; // Nova ação para gerir cliques
+  selectAtom: (id: string) => void;
 }
 
 const isOccupied = (atoms: Record<string, Atom>, q: number, r: number) => {
@@ -21,26 +26,33 @@ export const useMoleculeStore = create<MoleculeState>((set, get) => ({
   atoms: {},
   bonds: [],
   selectedAtomId: null,
+  activePaletteElement: null, // Inicialmente nada selecionado
 
-  addAtom: (element, q, r) =>
+  // NOVO: Define qual elemento o utilizador quer desenhar
+  setActiveElement: (element) => set({ activePaletteElement: element }),
+
+  // NOVO: Adiciona o elemento ativo na posição clicada da grade
+  addAtomToGrid: (q, r) =>
     set((state) => {
-      let targetQ = q;
-      while (isOccupied(state.atoms, targetQ, r)) {
-        targetQ++;
+      const { activePaletteElement, atoms } = state;
+
+      // Se não houver elemento selecionado na paleta, ou a casa estiver ocupada, ignora
+      if (!activePaletteElement || isOccupied(atoms, q, r)) {
+        return state;
       }
 
-      // Adicionamos um número aleatório para garantir IDs 100% únicos caso o utilizador clique muito rápido
       const newId = `atom_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      const newAtom: Atom = {
+        id: newId,
+        element: activePaletteElement,
+        charge: 0,
+        gridPosition: { q, r },
+      };
+
       return {
-        atoms: {
-          ...state.atoms,
-          [newId]: {
-            id: newId,
-            element,
-            charge: 0,
-            gridPosition: { q: targetQ, r },
-          },
-        },
+        atoms: { ...atoms, [newId]: newAtom },
+        // Opcional: Limpar a seleção da paleta após adicionar
+        activePaletteElement: null,
       };
     }),
 
@@ -55,41 +67,42 @@ export const useMoleculeStore = create<MoleculeState>((set, get) => ({
 
   selectAtom: (id) =>
     set((state) => {
-      const { selectedAtomId, bonds } = state;
+      const { selectedAtomId, bonds, atoms } = state;
 
-      // Se clicar no mesmo átomo que já está selecionado, ele é desmarcado
-      if (selectedAtomId === id) {
-        return { selectedAtomId: null };
+      if (selectedAtomId === id || !selectedAtomId) {
+        return { selectedAtomId: id === selectedAtomId ? null : id };
       }
 
-      // Se não havia nenhum selecionado, seleciona este
-      if (!selectedAtomId) {
-        return { selectedAtomId: id };
-      }
-
-      // Se já havia um selecionado e clicou noutro, CRIAMOS A LIGAÇÃO!
-      // Primeiro, evitamos ligações duplicadas entre os mesmos dois átomos
+      // Verificar se já existe ligação
       const bondExists = bonds.some(
         (b) =>
           (b.sourceId === selectedAtomId && b.targetId === id) ||
           (b.sourceId === id && b.targetId === selectedAtomId),
       );
+      if (bondExists) return { selectedAtomId: null };
 
-      if (bondExists) {
-        return { selectedAtomId: null }; // Cancela a ação se já estiverem ligados
-      }
-
-      const newBond: Bond = {
-        id: `bond_${Date.now()}`,
+      // Criar uma ligação temporária para teste
+      const potentialBond: Bond = {
+        id: `temp`,
         sourceId: selectedAtomId,
         targetId: id,
         order: BondOrder.SINGLE,
         stereo: StereoType.NONE,
       };
 
+      // VALIDAR COM RDKit
+      const validation = isChemistryValid(atoms, [...bonds, potentialBond]);
+
+      if (!validation.valid) {
+        alert(`Erro Químico: ${validation.error}`); // No futuro, use um Toast mais elegante
+        return { selectedAtomId: null };
+      }
+
+      // Se for válido, adiciona de verdade
+      const finalBond = { ...potentialBond, id: `bond_${Date.now()}` };
       return {
-        bonds: [...bonds, newBond],
-        selectedAtomId: null, // Limpa a seleção após ligar
+        bonds: [...bonds, finalBond],
+        selectedAtomId: null,
       };
     }),
 }));
